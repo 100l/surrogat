@@ -38,28 +38,22 @@
     tg.ready(); tg.expand();
 
     const userName = (tg.initDataUnsafe.user?.first_name || "Аноним") + (tg.initDataUnsafe.user?.last_name ? " " + tg.initDataUnsafe.user.last_name : "");
-    const userId = tg.initDataUnsafe.user?.id || "guest" + Math.random().toString(36).substr(2,6);
+    const userId = tg.initDataUnsafe.user?.id || Date.now();
 
     let pc = null;
     let stream = null;
-    let roomId = null;
+    let roomId = "live_" + Date.now() + "_" + Math.random().toString(36).substr(2,5);
 
     const ws = new WebSocket('wss://surrogat-signal.deno.dev');
-
-    ws.onopen = () => {
-      console.log("Подключено к серверу");
-      // При открытии сразу запрашиваем список
-      ws.send(JSON.stringify({type:"getOnline"}));
-    };
 
     document.getElementById("watchBtn").onclick = () => {
       document.getElementById("main").style.display = "none";
       document.getElementById("list").style.display = "block";
+      ws.send(JSON.stringify({type:"getOnline"}));
       setInterval(() => ws.send(JSON.stringify({type:"getOnline"})), 3000);
     };
 
     document.getElementById("carrierBtn").onclick = () => {
-      roomId = "live_" + userId;
       startCarrier();
     };
 
@@ -72,13 +66,13 @@
         <video id="local" autoplay playsinline muted style="transform:scaleX(-1)"></video>
         <div class="switch" onclick="switchCam()">Сменить камеру</div>
         <div style="position:fixed;bottom:20px;left:0;right:0;background:rgba(0,120,0,0.9);padding:18px;color:#0f0;text-align:center;font-size:19px">
-          Ты в эфире как <b>${userName}</b><br>Ожидаем суррогатов...
+          Ты в эфире как <b>${userName}</b>
         </div>`;
 
       document.getElementById("local").srcObject = stream;
       startHost();
 
-      // РЕГИСТРИРУЕМСЯ В ОНЛАЙН
+      // Регистрация на сервере
       ws.send(JSON.stringify({type:"goOnline", roomId, nick: userName}));
     }
 
@@ -87,7 +81,7 @@
       const old = stream.getVideoTracks()[0];
       const newFacing = old.getSettings().facingMode === 'user' ? 'environment' : 'user';
       const newStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:newFacing}, audio:true});
-      const sender = pc.getSenders().find(s => s.track?.kind === 'video');
+      const sender = pc?.getSenders().find(s => s.track?.kind === 'video');
       if (sender) sender.replaceTrack(newStream.getVideoTracks()[0]);
       old.stop();
       stream = newStream;
@@ -107,7 +101,7 @@
       roomId = room;
       document.body.innerHTML = `
         <div class="back" onclick="location.reload()">Назад</div>
-        <div class="timer" id="timer">10:00</div>
+        <div class="timer">10:00</div>
         <video id="remote" autoplay playsinline></video>
         <div style="position:fixed;bottom:30px;left:20px;right:20px;background:rgba(0,0,0,0.8);padding:20px;border-radius:20px;color:#0f0;text-align:center;font-size:18px">
           Говори голосом — я выполню!
@@ -125,7 +119,7 @@
         sec--;
         const m = String(Math.floor(sec/60)).padStart(2,'0');
         const s = String(sec%60).padStart(2,'0');
-        document.getElementById("timer").textContent = m+":"+s;
+        document.querySelector(".timer").textContent = m+":"+s;
         if (sec <= 0) { clearInterval(timer); alert("Время вышло"); location.reload(); }
       }, 1000);
     }
@@ -137,18 +131,15 @@
         const list = document.getElementById("onlineList");
         list.innerHTML = "";
         if (msg.list.length === 0) {
-          list.innerHTML = "<p style='text-align:center;color:#555;margin-top:50px'>Пока никто не стримит</p>";
-          return;
+          list.innerHTML = "<p style='text-align:center;color:#555;margin-top:50px'>Никого нет онлайн</p>";
+        } else {
+          msg.list.forEach(h => {
+            const div = document.createElement("div");
+            div.className = "item";
+            div.innerHTML = `<p>${h.nick}</p><button class="private-btn" onclick="startPrivate('${h.roomId}')">Приват 10 мин</button>`;
+            list.appendChild(div);
+          });
         }
-        msg.list.forEach(h => {
-          const div = document.createElement("div");
-          div.className = "item";
-          div.innerHTML = `
-            <p>${h.nick}</p>
-            <button class="private-btn" onclick="startPrivate('${h.roomId}')">Приват 10 мин</button>
-          `;
-          list.appendChild(div);
-        });
       }
 
       if (!msg.roomId || msg.roomId !== roomId) return;
@@ -159,7 +150,7 @@
           .then(() => ws.send(JSON.stringify({type:"answer", answer:pc.localDescription, roomId})));
       }
       if (msg.type === "answer") pc.setRemoteDescription(msg.answer);
-      if (msg.type === "ice") pc.addIceCandidate(msg.candidate);
+      if (msg.type === "ice" && msg.candidate) pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
     };
 
     window.onbeforeunload = () => {
