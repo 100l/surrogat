@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SURROGAT</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body { 
+            margin: 0; padding: 0; 
+            background: #000; color: #fff; 
+            font-family: Arial, sans-serif; 
+            background: var(--tg-theme-bg-color, #000); 
+            color: var(--tg-theme-text-color, #fff); 
+        }
+        .header { 
+            text-align: center; padding: 20px; 
+            background: linear-gradient(to right, #000, #00ff00, #aa00ff); /* Чёрный + неон зелёный/фиолетовый */
+        }
+        .logo { 
+            width: 60px; height: 60px; margin: 0 auto; 
+            fill: #00ff00; /* Неоновый зелёный */
+        }
+        .top-list { padding: 10px; }
+        .stream-item { 
+            background: #111; margin: 10px 0; padding: 15px; 
+            border-left: 3px solid #00ff00; 
+            display: flex; justify-content: space-between; align-items: center; 
+        }
+        .stream-item:hover { border-left-color: #aa00ff; }
+        .watch-btn { 
+            background: #00ff00; color: black; padding: 10px 20px; border: none; 
+            border-radius: 5px; cursor: pointer; 
+        }
+        .carrier-btn { 
+            position: fixed; bottom: 20px; left: 20px; right: 20px; 
+            background: #00ff00; color: black; padding: 15px; border: none; 
+            border-radius: 10px; font-size: 18px; 
+        }
+        .map-placeholder { 
+            height: 200px; background: #222; text-align: center; line-height: 200px; 
+            color: #00ff00; margin: 10px; border: 1px solid #00ff00; 
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <svg class="logo" viewBox="0 0 100 100">
+            <!-- Силуэт идущего человечка с камерой вместо головы -->
+            <circle cx="50" cy="30" r="20" fill="#000" /> <!-- Камера-объектив -->
+            <rect x="40" y="50" width="20" height="30" fill="#00ff00" /> <!-- Тело -->
+            <line x1="40" y1="80" x2="30" y2="90" stroke="#00ff00" stroke-width="5" /> <!-- Левая нога -->
+            <line x1="60" y1="80" x2="70" y2="90" stroke="#00ff00" stroke-width="5" /> <!-- Правая нога -->
+            <line x1="40" y1="55" x2="30" y2="60" stroke="#00ff00" stroke-width="3" /> <!-- Левая рука -->
+            <line x1="60" y1="55" x2="70" y2="60" stroke="#00ff00" stroke-width="3" /> <!-- Правая рука -->
+        </svg>
+        <h1>SURROGAT</h1>
+        <p>Мгновенно окажись в хайпе от первого лица</p>
+    </div>
+    
+    <div class="map-placeholder">Карта хайпа (тестовая) — здесь будут метки носителей</div>
+    
+    <div class="top-list">
+        <h2>Топ-10 самых просматриваемых (по зрителям)</h2>
+        <div class="stream-item">
+            <div>
+                <strong>@user1 (Москва, Красная площадь)</strong><br>
+                1500 зрителей
+            </div>
+            <button class="watch-btn" onclick="watchStream(1)">Смотреть (15⭐ за 15 мин)</button>
+        </div>
+        <div class="stream-item">
+            <div>
+                <strong>@user2 (Вулкан, Исландия)</strong><br>
+                1200 зрителей
+            </div>
+            <button class="watch-btn" onclick="watchStream(2)">Смотреть (15⭐ за 15 мин)</button>
+        </div>
+        <div class="stream-item">
+            <div>
+                <strong>@user3 (Шторм, Майами)</strong><br>
+                1000 зрителей
+            </div>
+            <button class="watch-btn" onclick="watchStream(3)">Смотреть (15⭐ за 15 мин)</button>
+        </div>
+        <div class="stream-item">
+            <div>
+                <strong>@user4 (Северное сияние, Норвегия)</strong><br>
+                900 зрителей
+            </div>
+            <button class="watch-btn" onclick="watchStream(4)">Смотреть (15⭐ за 15 мин)</button>
+        </div>
+        <div class="stream-item">
+            <div>
+                <strong>@user5 (Протест, Берлин)</strong><br>
+                800 зрителей
+            </div>
+            <button class="watch-btn" onclick="watchStream(5)">Смотреть (15⭐ за 15 мин)</button>
+        </div>
+        <div class="stream-item">
+            <div>
+                <strong>@user6 (Пляж, Бали)</strong><br>
+                700 зрителей
+            </div>
+            <button class="watch-btn" onclick="watchStream(6)">Смотреть (15⭐ за 15 мин)</button>
+        </div>
+        <div class="stream-item">
+            <div>
+                <strong>@user7 (Концерт, ЛА)</strong><br>
+                600 зрителей
+            </div>
+            <button class="watch-btn" onclick="watchStream(7)">Смотреть (15⭐ за 15 мин)</button>
+        </div>
+        <div class="stream-item">
+            <div>
+                <strong>@user8 (Горы, Альпы)</strong><br>
+                500 зрителей
+            </div>
+            <button class="watch-btn" onclick="watchStream(8)">Смотреть (15⭐ за 15 мин)</button>
+        </div>
+        <div class="stream-item">
+            <div>
+                <strong>@user9 (Рынок, Токио)</strong><br>
+                400 зрителей
+            </div>
+            <button class="watch-btn" onclick="watchStream(9)">Смотреть (15⭐ за 15 мин)</button>
+        </div>
+        <div class="stream-item">
+            <div>
+                <strong>@user10 (Парк, Нью-Йорк)</strong><br>
+                300 зрителей
+            </div>
+            <button class="watch-btn" onclick="watchStream(10)">Смотреть (15⭐ за 15 мин)</button>
+        </div>
+    </div>
+    
+    <button class="carrier-btn" onclick="becomeCarrier()">Я носитель — начать стрим</button>
+    
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.ready();
+        tg.expand(); // Полноэкранно
+        
+        tg.setHeaderColor('#000');
+        tg.setBackgroundColor('#000');
+        
+        function watchStream(id) {
+            // Заглушка для стрима + оплаты Stars
+            tg.showAlert(`Открываем стрим #${id}... Оплата 15⭐ за 15 мин (в реале — tg.openInvoice для Stars)`);
+            // В реале: tg.openInvoice({title: 'Аренда стрима', prices: [{label: '15 мин', amount: 15}]});
+        }
+        function becomeCarrier() {
+            tg.showAlert('Включаем камеру + гео... Ты в топе! (в реале — стрим через 100ms + добавление в список)');
+        }
+    </script>
+</body>
+</html>
