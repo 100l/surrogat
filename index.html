@@ -10,109 +10,62 @@
     h1{font-size:42px;margin:40px auto 20px;text-align:center;background:linear-gradient(90deg,#00ff41,#b026ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
     .btn{background:linear-gradient(90deg,#00ff41,#b026ff);color:#000;font-weight:900;font-size:24px;padding:22px;border-radius:25px;border:none;width:88%;margin:20px auto;display:block;box-shadow:0 15px 40px rgba(0,255,65,0.5);cursor:pointer}
     .back{position:fixed;top:15px;left:15px;background:rgba(255,255,255,0.2);padding:12px 20px;border-radius:50px;z-index:999;font-size:28px;cursor:pointer}
-    .switch{position:fixed;bottom:100px;left:50%;transform:translateX(-50%);background:rgba(255,255,255,0.3);padding:15px 40px;border-radius:50px;z-index:999;cursor:pointer}
     video{width:100vw;height:100vh;object-fit:cover}
-    .list{padding:20px}
-    .item{background:#111;margin:15px 0;padding:18px;border-radius:15px;display:flex;justify-content:space-between;align-items:center}
-    .item p{margin:0;color:#0f0;font-size:19px;font-weight:700}
-    .private-btn{background:#b026ff;color:#fff;padding:12px 28px;border-radius:12px;border:none;font-weight:700;cursor:pointer}
   </style>
 </head>
 <body>
 
   <div id="main">
     <h1>SURROGAT</h1>
-    <button class="btn" id="watch">Онлайн носители</button>
-    <button class="btn" id="carrier">Я носитель — начать стрим</button>
-  </div>
-
-  <div id="list" style="display:none">
-    <div class="back" onclick="location.reload()">Назад</div>
-    <h1>Онлайн носители</h1>
-    <div class="list" id="online"></div>
+    <button class="btn" onclick="watch()">Смотреть стрим</button>
+    <button class="btn" onclick="start()">Я носитель — начать стрим</button>
   </div>
 
   <script>
     const tg = Telegram.WebApp;
     tg.ready(); tg.expand();
 
-    const name = tg.initDataUnsafe.user?.first_name || "Аноним";
-    let stream = null;
-    let pc = null;
+    const name = tg.initDataUnsafe.user?.first_name || "Носитель";
 
-    // Уникальный ID комнаты
-    const myRoom = "sur_" + Date.now();
+    async function start() {
+      const stream = await navigator.mediaDevices.getUserMedia({video:true, audio:true});
+      document.body.innerHTML = `<div class="back" onclick="location.reload()">Назад</div><video autoplay playsinline muted style="transform:scaleX(-1)"></video>`;
+      document.querySelector("video").srcObject = stream;
 
-    // === НОСИТЕЛЬ ===
-    document.getElementById("carrier").onclick = async () => {
-      stream = await navigator.mediaDevices.getUserMedia({video: true, audio: true});
-      document.body.innerHTML = `
-        <div class="back" onclick="location.reload()">Назад</div>
-        <video id="local" autoplay playsinline muted style="transform:scaleX(-1)"></video>
-        <div class="switch" onclick="switchCam()">Сменить камеру</div>
-        <div style="position:fixed;bottom:20px;left:0;right:0;background:rgba(0,120,0,0.9);padding:18px;color:#0f0;text-align:center">
-          Ты в эфире как <b>${name}</b>
-        </div>`;
-      document.getElementById("local").srcObject = stream;
+      // Публикуем себя в публичный канал
+      fetch(`https://surrogat-bot.deno.dev/add?name=${encodeURIComponent(name)}&id=${tg.initDataUnsafe.user?.id || Date.now()}`)
+        .then(() => console.log("Ты в эфире"));
+    }
 
-      // Записываем себя в облако Telegram
-      tg.CloudStorage.setItem("online_" + myRoom, JSON.stringify({name, room: myRoom, time: Date.now()}));
+    function watch() {
+      document.body.innerHTML = `<div class="back" onclick="location.reload()">Назад</div><h1>Онлайн носители</h1><div id="list" style="padding:20px"></div>`;
 
-      // Обновляем каждые 10 сек
-      setInterval(() => tg.CloudStorage.setItem("online_" + myRoom, JSON.stringify({name, room: myRoom, time: Date.now()})), 10000);
-    };
-
-    // === ЗРИТЕЛЬ ===
-    document.getElementById("watch").onclick = () => {
-      document.getElementById("main").style.display = "none";
-      document.getElementById("list").style.display = "block";
-
-      const list = document.getElementById("online");
+      const list = document.getElementById("list");
       const update = () => {
-        list.innerHTML = "<p style='text-align:center'>Поиск носителей...</p>";
-        const result = [];
-        tg.CloudStorage.getKeys((keys) => {
-          let count = 0;
-          if (!keys) { list.innerHTML = "<p style='text-align:center;color:#555'>Никого нет</p>"; return; }
-          keys.forEach(k => {
-            if (k.startsWith("online_")) {
-              tg.CloudStorage.getItem(k, (val) => {
-                count++;
-                if (val) {
-                  const data = JSON.parse(val);
-                  if (Date.now() - data.time < 30000) { // живой менее 30 сек назад
-                    result.push(data);
-                    const div = document.createElement("div");
-                    div.className = "item";
-                    div.innerHTML = `<p>${data.name}</p><button class="private-btn" onclick="connect('${data.room}')">Приват</button>`;
-                    list.appendChild(div);
-                  }
-                }
-                if (count === keys.length) {
-                  if (result.length === 0) list.innerHTML = "<p style='text-align:center;color:#555'>Никого нет онлайн</p>";
-                }
-              });
+        fetch("https://surrogat-bot.deno.dev/list")
+          .then(r => r.json())
+          .then(data => {
+            list.innerHTML = "";
+            if (data.length === 0) {
+              list.innerHTML = "<p style='text-align:center;color:#555'>Никого нет онлайн</p>";
+              return;
             }
+            data.forEach(u => {
+              const div = document.createElement("div");
+              div.style = "background:#111;margin:15px 0;padding:18px;border-radius:15px;display:flex;justify-content:space-between;align-items:center";
+              div.innerHTML = `<p style="margin:0;color:#0f0;font-weight:700">${u.name}</p>
+                <button style="background:#b026ff;color:#fff;padding:12px 25px;border-radius:12px;border:none;font-weight:700" onclick="connect('${u.id}')">Приват</button>`;
+              list.appendChild(div);
+            });
           });
-        });
       };
       update();
-      setInterval(update, 5000);
-    };
+      setInterval(update, 4000);
+    }
 
-    window.connect = (room) => {
-      alert("Приватный стрим скоро будет здесь — пока просто подтверждение, что всё работает");
-      // Дальше будет полноценный WebRTC по room ID
-    };
-
-    window.switchCam = async () => {
-      if (!stream) return;
-      const old = stream.getVideoTracks()[0];
-      const newFacing = old.getSettings().facingMode === 'user' ? 'environment' : 'user';
-      const newStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:newFacing}, audio:true});
-      document.getElementById("local").srcObject = newStream;
-      old.stop();
-      stream = newStream;
+    window.connect = (id) => {
+      alert("Приватный стрим с " + id + " — будет через 5 минут");
+      // Здесь будет WebRTC по ID
     };
   </script>
 </body>
