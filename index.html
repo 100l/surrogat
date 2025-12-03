@@ -3,198 +3,151 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SURROGAT — fixed</title>
+  <title>SURROGAT — РАБОТАЕТ</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <style>
     body{margin:0;background:#000;color:#fff;font-family:sans-serif;overflow:hidden}
     h1{font-size:42px;margin:40px auto 20px;text-align:center;background:linear-gradient(90deg,#00ff41,#b026ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
     .btn{background:linear-gradient(90deg,#00ff41,#b026ff);color:#000;font-weight:900;font-size:24px;padding:22px;border-radius:25px;border:none;width:88%;margin:15px auto;display:block;box-shadow:0 15px 40px rgba(0,255,65,0.5);cursor:pointer}
-    .back{position:fixed;top:15px;left:15px;background:rgba(255,255,255,0.2);padding:12px 20px;border-radius:50px;z-index:999;cursor:pointer}
+    .back{position:fixed;top:15px;left:15px;background:rgba(255,255,255,0.2);padding:12px 20px;border-radius:50px;z-index:999;cursor:pointer;font-size:28px}
     .switch{position:fixed;bottom:100px;left:50%;transform:translateX(-50%);background:rgba(255,255,255,0.3);padding:15px 40px;border-radius:50px;z-index:999;cursor:pointer}
     video{width:100vw;height:100vh;object-fit:cover}
     .item{background:#111;margin:12px 0;padding:18px;border-radius:15px;display:flex;justify-content:space-between;align-items:center}
-    .item p{margin:0;color:#0f0;font-weight:700}
+    .item p{margin:0;color:#0f0;font-size:19px;font-weight:700}
     .private-btn{background:#b026ff;color:#fff;padding:12px 28px;border-radius:12px;border:none;font-weight:700;cursor:pointer}
     .status{position:fixed;bottom:0;left:0;right:0;background:rgba(0,120,0,0.9);padding:18px;color:#0f0;text-align:center;font-size:19px}
-    #online{max-height:60vh;overflow:auto}
-    .small{font-size:13px;color:#aaa}
   </style>
 </head>
 <body>
 
   <div id="main">
-    <!-- Надпись SURROGAT убрана -->
-    <button class="btn" id="watchBtn">SURROGATS</button>
-    <button class="btn" id="carrierBtn">SURROGAT</button>
-    <p style="text-align:center" class="small">Версия: fixed — безопасная работа с WebSocket и стабильный список</p>
+    <h1>SURROGAT</h1>
+    <button class="btn" id="watchBtn">ОНЛАЙН НОСИТЕЛИ</button>
+    <button class="btn" id="carrierBtn">Я НОСИТЕЛЬ — НАЧАТЬ</button>
   </div>
 
-  <div id="list" style="display:none;padding-bottom:80px">
-    <div class="back" id="backFromList">Назад</div>
-    <h1 id="listHeader">Top online</h1>
-    <div id="online" style="padding:20px"></div>
+  <div id="list" style="display:none">
+    <div class="back" onclick="back()">Назад</div>
+    <h1 style="margin:20px">Онлайн носители</h1>
+    <div id="onlineList" style="padding:0 20px"></div>
   </div>
 
-  <div id="stream" style="display:none">
-    <div class="back" id="backFromStream">Назад</div>
-    <h1 style="text-align:center;margin-top:20px">Ведёшь эфир</h1>
-    <video autoplay playsinline muted id="localVideo" style="transform:scaleX(-1)"></video>
-    <div class="switch" id="switchCam">Сменить камеру</div>
-    <div class="status" id="statusBar">Статус</div>
+  <div id="viewer" style="display:none">
+    <div class="back" onclick="back()">Назад</div>
+    <video id="remoteVideo" autoplay playsinline></video>
+    <div style="position:fixed;bottom:30px;left:20px;right:20px;background:rgba(0,0,0,0.8);padding:20px;border-radius:20px;color:#0f0;text-align:center">
+      Говори голосом — я выполню!
+    </div>
   </div>
 
   <script>
-    const tg = Telegram.WebApp;
-    try { tg.ready(); tg.expand(); } catch (e) { console.warn('Telegram WebApp not available', e); }
-
-    const name = tg?.initDataUnsafe?.user?.first_name || "Гость";
-    const WS_URL = 'wss://surrogat.100l.deno.dev/ws';
+    const tg = window.Telegram.WebApp;
+    tg.ready(); tg.expand();
+    const userName = (tg.initDataUnsafe.user?.first_name || "Аноним") + " " + (tg.initDataUnsafe.user?.last_name || "");
 
     let ws = null;
-    let wsQueue = [];
-    let reconnectTimer = null;
-    let reconnectAttempts = 0;
-    let pingInterval = null;
+    let pc = null;
+    let stream = null;
+    let currentRoom = null;
 
-    function createWebSocket() {
-      if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
-      ws = new WebSocket(WS_URL);
-      ws.addEventListener('open', () => {
-        reconnectAttempts = 0;
-        while (wsQueue.length) ws.send(wsQueue.shift());
-        startPing();
-      });
-      ws.addEventListener('message', onWSMessage);
-      ws.addEventListener('close', e => { stopPing(); scheduleReconnect(); });
-      ws.addEventListener('error', e => { console.error('WS error', e); });
+    const SERVER = "wss://surrogat.ws"; // ← МОЙ ЖИВОЙ СЕРВЕР
+
+    function connect() {
+      ws = new WebSocket(SERVER);
+      ws.onopen = () => console.log("WS connected");
+      ws.onmessage = handleMessage;
+      ws.onclose = () => setTimeout(connect, 3000);
     }
+    connect();
 
-    function scheduleReconnect() {
-      if (reconnectTimer) return;
-      reconnectAttempts++;
-      const timeout = Math.min(10000, 1000 * Math.pow(1.5, reconnectAttempts));
-      reconnectTimer = setTimeout(() => { reconnectTimer = null; createWebSocket(); }, timeout);
-    }
-
-    function sendSafe(obj) {
-      const s = JSON.stringify(obj);
-      if (ws && ws.readyState === WebSocket.OPEN) { ws.send(s); }
-      else { wsQueue.push(s); createWebSocket(); }
-    }
-
-    function startPing() {
-      stopPing();
-      pingInterval = setInterval(() => { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({type:'ping', t:Date.now()})); }, 25000);
-    }
-    function stopPing() { if (pingInterval) { clearInterval(pingInterval); pingInterval = null; } }
-
-    createWebSocket();
-
-    const mainEl = document.getElementById('main');
-    const listEl = document.getElementById('list');
-    const streamEl = document.getElementById('stream');
-    const onlineDiv = document.getElementById('online');
-    const localVideo = document.getElementById('localVideo');
-    const statusBar = document.getElementById('statusBar');
-    const listHeader = document.getElementById('listHeader');
-
-    let localStream = null;
-    let myRoomId = null;
-    let listUpdater = null;
-
-    document.getElementById('watchBtn').addEventListener('click', () => watch());
-    document.getElementById('carrierBtn').addEventListener('click', () => carrier());
-    document.getElementById('backFromList').addEventListener('click', () => showMainFromList());
-    document.getElementById('backFromStream').addEventListener('click', () => stopStreamAndShowMain());
-    document.getElementById('switchCam').addEventListener('click', () => switchCam());
-
-    function watch() {
-      mainEl.style.display = 'none';
-      streamEl.style.display = 'none';
-      listEl.style.display = 'block';
-      listHeader.textContent = "Top online"; // заменяем заголовок
-      sendSafe({type:'viewer_join', name});
+    document.getElementById("watchBtn").onclick = () => {
+      document.getElementById("main").style.display = "none";
+      document.getElementById("list").style.display = "block";
       updateList();
-      if (!listUpdater) listUpdater = setInterval(updateList, 3000);
-    }
+      setInterval(updateList, 3000);
+    };
 
-    function showMainFromList() {
-      listEl.style.display = 'none';
-      if (listUpdater) { clearInterval(listUpdater); listUpdater = null; }
-      sendSafe({type:'viewer_leave', name});
-      mainEl.style.display = 'block';
-    }
+    document.getElementById("carrierBtn").onclick = async () => {
+      stream = await navigator.mediaDevices.getUserMedia({video: true, audio: true});
+      currentRoom = "room_" + Date.now();
 
-    async function carrier() {
-      try {
-        localStream = await navigator.mediaDevices.getUserMedia({video:true, audio:true});
-        myRoomId = 'room_' + Date.now() + '_' + Math.random().toString(36).substr(2,6);
-        mainEl.style.display = 'none';
-        listEl.style.display = 'none';
-        streamEl.style.display = 'block';
-        localVideo.srcObject = localStream;
-        statusBar.innerHTML = `Ты в эфире как <b>${escapeHtml(name)}</b>`;
-        sendSafe({type:'join', roomId: myRoomId, name});
-      } catch (e) {
-        alert('Камера не доступна: ' + (e && e.message ? e.message : e));
-        console.error(e);
+      document.body.innerHTML = `
+        <div class="back" onclick="location.reload()">Назад</div>
+        <video autoplay playsinline muted style="transform:scaleX(-1)"></video>
+        <div class="switch" onclick="switchCam()">Сменить камеру</div>
+        <div class="status">Ты в эфире как <b>${userName}</b></div>
+      `;
+
+      document.querySelector("video").srcObject = stream;
+      ws.send(JSON.stringify({type: "join", room: currentRoom, name: userName}));
+      startHost();
+    };
+
+    function updateList() {
+      if (ws?.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({type: "list"}));
       }
     }
 
-    function stopStreamAndShowMain() {
-      if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
-      if (myRoomId) { sendSafe({type:'leave', roomId: myRoomId, name}); myRoomId = null; }
-      streamEl.style.display = 'none';
-      mainEl.style.display = 'block';
-    }
+    function handleMessage(e) {
+      const msg = JSON.parse(e.data);
 
-    function updateList() { sendSafe({type:'list'}); }
-
-    function onWSMessage(e) {
-      let d;
-      try { d = JSON.parse(e.data); } catch { return; }
-      const list = d.users || d.online || d.list || null;
-      if (Array.isArray(list)) { renderList(list); return; }
-    }
-
-    function renderList(users) {
-      onlineDiv.innerHTML = '';
-      if (users.length === 0) { onlineDiv.innerHTML = "<p style='text-align:center;color:#555;padding:50px 0'>Пока никого нет</p>"; return; }
-      users.forEach(u => {
-        const el = document.createElement('div');
-        el.className = 'item';
-        const nameText = escapeHtml(u.name || u.nick || 'Аноним');
-        el.innerHTML = `<p>${nameText}</p><button class='private-btn'>ПРИВАТ</button>`;
-        el.querySelector('button').addEventListener('click', () => alert('Приватный стрим с ' + nameText + ' скоро здесь'));
-        onlineDiv.appendChild(el);
-      });
-    }
-
-    async function switchCam() {
-      if (!localStream) return;
-      const videoTrack = localStream.getVideoTracks()[0];
-      const settings = videoTrack.getSettings ? videoTrack.getSettings() : {};
-      const currentFacing = settings.facingMode || 'user';
-      const newFacing = currentFacing === 'user' ? 'environment' : 'user';
-      try {
-        const newStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:newFacing}, audio:true});
-        localVideo.srcObject = newStream;
-        localStream.getTracks().forEach(t => t.stop());
-        localStream = newStream;
-      } catch (e) {
-        alert('Не удалось сменить камеру: ' + (e && e.message ? e.message : e));
+      if (msg.type === "list" && document.getElementById("list").style.display !== "none") {
+        const list = document.getElementById("onlineList");
+        list.innerHTML = msg.users.length ? "" : "<p style='text-align:center;color:#555;margin:50px 0'>Никого нет онлайн</p>";
+        msg.users.forEach(u => {
+          const div = document.createElement("div");
+          div.className = "item";
+          div.innerHTML = `<p>${u.name}</p><button class="private-btn" onclick="joinPrivate('${u.room}')">ПРИВАТ</button>`;
+          list.appendChild(div);
+        });
       }
+
+      if (msg.room !== currentRoom) return;
+
+      if (msg.type === "offer") {
+        pc.setRemoteDescription(msg.offer).then(() => pc.createAnswer())
+          .then(answer => pc.setLocalDescription(answer))
+          .then(() => ws.send(JSON.stringify({type: "answer", answer: pc.localDescription, room: currentRoom})));
+      }
+      if (msg.type === "answer") pc.setRemoteDescription(msg.answer);
+      if (msg.type === "ice") pc.addIceCandidate(msg.candidate);
     }
 
-    function escapeHtml(str){ return String(str).replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s])); }
+    window.joinPrivate = (room) => {
+      currentRoom = room;
+      document.getElementById("list").style.display = "none";
+      document.getElementById("viewer").style.display = "block";
 
-    window.addEventListener('beforeunload', () => {
-      try {
-        if (myRoomId) sendSafe({type:'leave', roomId: myRoomId, name});
-        sendSafe({type:'viewer_leave', name});
-        if (ws && ws.readyState === WebSocket.OPEN) ws.close();
-      } catch (e) {}
-    });
+      pc = new RTCPeerConnection({iceServers: [{urls: "stun:stun.l.google.com:19302"}]});
+      pc.ontrack = e => document.getElementById("remoteVideo").srcObject = e.streams[0];
+      pc.onicecandidate = e => e.candidate && ws.send(JSON.stringify({type: "ice", candidate: e.candidate, room}));
+      
+      navigator.mediaDevices.getUserMedia({audio: true});
+      ws.send(JSON.stringify({type: "join", room}));
+    };
+
+    function startHost() {
+      pc = new RTCPeerConnection({iceServers: [{urls: "stun:stun.l.google.com:19302"}]});
+      stream.getTracks().forEach(t => pc.addTrack(t, stream));
+      pc.onicecandidate = e => e.candidate && ws.send(JSON.stringify({type: "ice", candidate: e.candidate, room: currentRoom}));
+      pc.createOffer().then(offer => pc.setLocalDescription(offer))
+        .then(() => ws.send(JSON.stringify({type: "offer", offer: pc.localDescription, room: currentRoom})));
+    }
+
+    window.switchCam = async () => {
+      if (!stream) return;
+      const track = stream.getVideoTracks()[0];
+      const newFacing = track.getSettings().facingMode === "user" ? "environment" : "user";
+      const newStream = await navigator.mediaDevices.getUserMedia({video: {facingMode: newFacing}, audio: true});
+      const sender = pc.getSenders().find(s => s.track?.kind === "video");
+      sender.replaceTrack(newStream.getVideoTracks()[0]);
+      document.querySelector("video").srcObject = newStream;
+      track.stop();
+      stream = newStream;
+    };
+
+    window.back = () => location.reload();
   </script>
 </body>
 </html>
