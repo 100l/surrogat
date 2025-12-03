@@ -5,83 +5,204 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SURROGAT</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script src="https://cdn.100ms.live/v2/hms.js"></script>
+  <script src="https://cdn.100ms.live/sdk/hms-sdk.js"></script> <!-- 100ms SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
   <style>
-    body{margin:0;background:#000;color:#fff;font-family:sans-serif;padding:20px;text-align:center}
+    body {margin:0;background:#000;color:#fff;font-family:sans-serif;text-align:center;padding:20px}
     h1{font-size:38px;margin:30px 0 10px;background:linear-gradient(90deg,#00ff41,#b026ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
     p{font-size:18px;opacity:0.9;line-height:1.5}
     .btn{background:linear-gradient(90deg,#00ff41,#b026ff);color:#000;font-weight:900;font-size:22px;padding:20px;border-radius:20px;border:none;width:92%;margin:20px auto;display:block;box-shadow:0 10px 40px rgba(0,255,65,0.5)}
-    .free{color:#0f0;font-size:14px;margin-top:-15px}
-    video{width:100vw;height:100vh;object-fit:cover;background:#000}
+    #map {height:200px;margin:20px auto;border:2px solid #00ff41;border-radius:15px}
+    .stream-list{padding:0 15px}
+    .stream-card{background:#111;margin:15px 0;padding:15px;border-radius:15px;display:flex;justify-content:space-between;align-items:center;box-shadow:0 4px 20px rgba(0,255,65,0.1)}
+    .stream-card:hover {box-shadow:0 4px 20px rgba(0,255,65,0.3)}
+    .stream-left{flex:1}
+    .stream-nick{font-weight:700;color:#00ff41}
+    .stream-loc{font-size:14px;opacity:0.7}
+    .stream-viewers{color:#b026ff;font-weight:600}
+    .watch-btn{background:#00ff41;color:#000;padding:10px 20px;border-radius:12px;border:none;font-weight:700}
+    .private-btn{background:#b026ff;color:#000;padding:10px 20px;border-radius:12px;border:none;font-weight:700}
   </style>
 </head>
 <body>
 
   <h1>SURROGAT</h1>
-  <p>Смотри бесплатно — управляй за звёзды</p>
+  <p>Бесплатный просмотр публичных стримов<br>Приватный суррогат с командами — 15 ⭐ / 15 мин</p>
 
-  <!-- Бесплатный просмотр (всегда работает) -->
-  <button class="btn" id="freeWatch">Смотреть публичный стрим бесплатно</button>
-  <p class="free">или</p>
+  <button class="btn" id="watchPublic">Смотреть публичные стримы</button>
+  <button class="btn" id="startStream">Стримить</button>
 
-  <!-- Приватный режим с оплатой и голосовыми командами -->
-  <button class="btn" id="privateBtn">Приватный суррогат — 15 ⭐ / 15 мин</button>
-  <p class="free">(ты один + голосовые команды носителю)</p>
+  <div id="map" style="display:none"></div>
+  <div id="streamList" style="display:none" class="stream-list"></div>
 
   <script>
     const tg = Telegram.WebApp;
     tg.ready(); tg.expand();
 
-    const ROOM_ID = "6757f3f0c5b0c71b1e8b4567";
-    const TOKEN_ENDPOINT = "https://surrogat-token.deno.dev/token";
+    // Firebase config (вставь свой)
+    const firebaseConfig = {
+      apiKey: "YOUR_API_KEY",
+      authDomain: "surrogat.firebaseapp.com",
+      databaseURL: "https://surrogat-default-rtdb.firebaseio.com",
+      projectId: "surrogat",
+      storageBucket: "surrogat.appspot.com",
+      messagingSenderId: "YOUR_SENDER_ID",
+      appId: "YOUR_APP_ID"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
 
-    async function getToken(role) {
-      const res = await fetch(`${TOKEN_ENDPOINT}?room=${ROOM_ID}&role=${role}`);
-      return await res.text();
-    }
+    // 100ms config (вставь свой)
+    const HMS_APP_ACCESS_KEY = "YOUR_100MS_ACCESS_KEY";
+    const HMS_APP_SECRET = "YOUR_100MS_SECRET";
+    const HMS_TEMPLATE_ID = "YOUR_TEMPLATE_ID";
 
-    // БЕСПЛАТНЫЙ ПРОСМОТР
-    document.getElementById('freeWatch').onclick = async () => {
-      const token = await getToken('viewer');
-      const hms = HMS.create({ token });
-      hms.join({ userName: 'Зритель' });
-      document.body.innerHTML = `<video id="video" autoplay playsinline></video>`;
-      hms.on('track', track => {
-        if (track.kind === 'video') track.attach(document.getElementById('video'));
+    // Карта
+    const map = L.map('map').setView([51.5, -0.09], 3);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+    // Список стримов (динамический из Firebase)
+    const streamList = document.getElementById('streamList');
+    db.ref('streams').on('value', snapshot => {
+      streamList.innerHTML = '';
+      const streams = snapshot.val();
+      let top = Object.entries(streams || {}).sort((a,b) => b[1].viewers - a[1].viewers).slice(0,10);
+      top.forEach(([id, data]) => {
+        const card = document.createElement('div');
+        card.className = 'stream-card';
+        card.innerHTML = `
+          <div class="stream-left">
+            <div class="stream-nick">@${data.nick}</div>
+            <div class="stream-loc">${data.loc}</div>
+          </div>
+          <div class="stream-viewers">${data.viewers} зрителей</div>
+          <button class="watch-btn" onclick="watchPublic('${id}')">Смотреть бесплатно</button>
+          <button class="private-btn" onclick="startPrivate('${id}')">Приват — 15 ⭐</button>
+        `;
+        streamList.appendChild(card);
+      });
+    });
+
+    // Кнопка "Смотреть публичные"
+    document.getElementById('watchPublic').onclick = () => {
+      document.getElementById('map').style.display = 'block';
+      streamList.style.display = 'block';
+      // Добавляем метки на карту из Firebase
+      db.ref('streams').once('value', snapshot => {
+        const streams = snapshot.val();
+        for (let id in streams) {
+          L.marker([streams[id].lat, streams[id].lon]).addTo(map).bindPopup(streams[id].nick);
+        }
       });
     };
 
-    // ПРИВАТНЫЙ СУРРОГАТ (оплата + голосовые команды)
-    document.getElementById('privateBtn').onclick = () => {
+    // Бесплатный просмотр публичного стрима
+    window.watchPublic = async (roomId) => {
+      const token = await fetch(`https://api.100ms.live/v2/rooms/${roomId}/tokens`, {
+        method: 'POST',
+        headers: {'Authorization': `Bearer ${btoa(`${HMS_APP_ACCESS_KEY}:${HMS_APP_SECRET}`)}`, 'Content-Type': 'application/json'},
+        body: JSON.stringify({role: 'viewer'})
+      }).then(res => res.json()).then(data => data.token);
+
+      const hms = new HMS.SDK();
+      hms.init(token);
+      await hms.join({userName: tg.initDataUnsafe.user.first_name || 'Зритель'});
+
+      document.body.innerHTML = `<video id="video" autoplay playsinline></video>`;
+      hms.on(HMS.Event.TRACK_ADD, (track) => {
+        if (track.kind === 'video') track.attach(document.getElementById('video'));
+      });
+
+      // Обновляем зрителей
+      db.ref(`streams/${roomId}/viewers`).transaction(v => (v || 0) + 1);
+    };
+
+    // Кнопка "Стримить"
+    document.getElementById('startStream').onclick = async () => {
+      tg.requestLocation((loc) => {
+        const room = await fetch('https://api.100ms.live/v2/rooms', {
+          method: 'POST',
+          headers: {'Authorization': `Bearer ${btoa(`${HMS_APP_ACCESS_KEY}:${HMS_APP_SECRET}`)}`, 'Content-Type': 'application/json'},
+          body: JSON.stringify({template_id: HMS_TEMPLATE_ID})
+        }).then(res => res.json());
+
+        const roomId = room.id;
+
+        db.ref(`streams/${roomId}`).set({
+          nick: tg.initDataUnsafe.user.username || 'Носитель',
+          loc: `Широта ${loc.latitude}, Долгота ${loc.longitude}`,
+          lat: loc.latitude,
+          lon: loc.longitude,
+          viewers: 0,
+          rating: 0
+        });
+
+        const stream = await navigator.mediaDevices.getUserMedia({video: true, audio: true});
+
+        const token = await fetch(`https://api.100ms.live/v2/rooms/${roomId}/tokens`, {
+          method: 'POST',
+          headers: {'Authorization': `Bearer ${btoa(`${HMS_APP_ACCESS_KEY}:${HMS_APP_SECRET}`)}`, 'Content-Type': 'application/json'},
+          body: JSON.stringify({role: 'host'})
+        }).then(res => res.json()).then(data => data.token);
+
+        const hms = new HMS.SDK();
+        hms.init(token);
+        await hms.join({userName: 'Носитель'});
+
+        hms.publish(stream);
+
+        document.body.innerHTML = `<video id="video" autoplay playsinline muted style="width:100%;height:100vh;object-fit:cover;transform:scaleX(-1)"></video>`;
+        stream.getVideoTracks()[0].attach(document.getElementById('video'));
+      });
+    };
+
+    // Приватный суррогат
+    window.startPrivate = (roomId) => {
       tg.openInvoice({
         title: 'Приватный суррогат — 15 минут',
-        description: 'Эксклюзивный стрим + голосовые команды носителю',
-        payload: 'private_15min',
+        description: 'Эксклюзив + голосовые команды (комиссия платформы 3 ⭐)',
+        payload: roomId,
         provider_token: '',
         currency: 'XTR',
-        prices: [{ label: '15 минут приватного суррогата', amount: 15 }]
+        prices: [{ label: '15 мин', amount: 15 }]
       }, async (success) => {
         if (success) {
-          // После оплаты — отдельная приватная комната + голосовой канал
-          const token = await getToken('private_viewer');
-          const hms = HMS.create({ token });
-          hms.join({ userName: tg.initDataUnsafe.user.first_name + ' (приват)' });
+          // Симуляция комиссии: 12 носителю, 3 платформе (в реале — через bot wallet)
+          console.log('Комиссия платформы 3 ⭐');
 
-          document.body.innerHTML = `
-            <video id="video" autoplay playsinline></video>
-            <div style="position:fixed;bottom:20px;left:20px;right:20px;z-index:100">
-              <p style="background:rgba(0,0,0,0.7);padding:15px;border-radius:15px">
-                Говори голосом — носитель выполнит!<br>
-                Примеры: «повернись», «подойди ближе», «покажи цену»
-              </p>
-            </div>`;
+          // Подключение к приватному
+          const token = await fetch(`https://api.100ms.live/v2/rooms/${roomId}/tokens`, {
+            method: 'POST',
+            headers: {'Authorization': `Bearer ${btoa(`${HMS_APP_ACCESS_KEY}:${HMS_APP_SECRET}`)}`, 'Content-Type': 'application/json'},
+            body: JSON.stringify({role: 'viewer'})
+          }).then(res => res.json()).then(data => data.token);
 
-          hms.on('track', track => {
+          const hms = new HMS.SDK();
+          hms.init(token);
+          await hms.join({userName: 'Суррогат'});
+
+          const stream = await navigator.mediaDevices.getUserMedia({audio: true}); // Голос для команд
+          hms.publish(stream.getAudioTracks()[0]);
+
+          document.body.innerHTML = `<video id="video" autoplay playsinline></video>`;
+          hms.on(HMS.Event.TRACK_ADD, (track) => {
             if (track.kind === 'video') track.attach(document.getElementById('video'));
           });
 
-          // Включить микрофон зрителя для голосовых команд
-          tg.requestMicrophone?.();
+          // Рейтинг после 15 мин
+          setTimeout(() => {
+            tg.showPopup({
+              title: 'Оцените носителя',
+              message: '1-5 звёзд',
+              buttons: [{text: '1⭐'},{text: '2⭐'},{text: '3⭐'},{text: '4⭐'},{text: '5⭐'}]
+            }, (btn) => {
+              const rating = parseInt(btn.text[0]);
+              db.ref(`streams/${roomId}/rating`).transaction(r => ((r || 0) + rating) / 2);
+            });
+          }, 15 * 60 * 1000);
         }
       });
     };
