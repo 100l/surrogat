@@ -6,183 +6,62 @@
     <title>SURROGAT</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        :root {
-            --neon-green: #00ff41;
-            --neon-purple: #b026ff;
-            --bg: #0a0a0a;
+        body { margin:0; background:#000; color:#fff; font-family:sans-serif; padding:20px; text-align:center; }
+        h1 { font-size:36px; margin:20px 0 10px; }
+        p { opacity:0.8; font-size:18px; }
+        .btn { 
+            background:linear-gradient(90deg,#00ff41,#b026ff); 
+            color:#000; font-weight:900; font-size:20px; 
+            padding:20px; border-radius:20px; border:none; 
+            width:90%; margin:20px auto; display:block;
+            box-shadow:0 10px 30px rgba(0,255,65,0.4);
         }
-        body {
-            margin: 0; padding: 0;
-            background: var(--bg);
-            color: #fff;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            overflow-x: hidden;
-        }
-        .header {
-            position: relative;
-            height: 280px;
-            background: linear-gradient(135deg, #000 0%, #003300 50%, #2d0033 100%);
-            overflow: hidden;
-            text-align: center;
-            padding-top: 50px;
-        }
-        .glow-bg {
-            position: absolute;
-            top: -50%; left: 50%;
-            width: 600px; height: 600px;
-            background: radial-gradient(circle, var(--neon-green) 0%, transparent 70%);
-            transform: translateX(-50%);
-            opacity: 0.4;
-            animation: pulse 8s infinite;
-        }
-        @keyframes pulse { 0%,100% {transform: translateX(-50%) scale(1);} 50% {transform: translateX(-50%) scale(1.2);} }
-        .logo {
-            width: 90px; height: 90px;
-            fill: var(--neon-green);
-            filter: drop-shadow(0 0 20px var(--neon-green));
-            margin-bottom: 16px;
-        }
-        h1 {
-            font-size: 42px;
-            font-weight: 900;
-            margin: 0;
-            background: linear-gradient(90deg, var(--neon-green), var(--neon-purple));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-        .subtitle {
-            font-size: 17px;
-            opacity: 0.8;
-            margin-top: 8px;
-        }
-        .map {
-            margin: 20px;
-            height: 180px;
-            background: #111;
-            border: 1px solid var(--neon-green);
-            border-radius: 16px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: var(--neon-green);
-            font-size: 18px;
-        }
-        .top-title {
-            margin: 0 20px 10px;
-            font-size: 20px;
-            font-weight: 700;
-        }
-        .stream-list {
-            padding: 0 12px 120px;
-        }
-        .stream-card {
-            background: #111;
-            margin: 12px 8px;
-            border-radius: 16px;
-            overflow: hidden;
-            border: 1px solid #222;
-            box-shadow: 0 4px 20px rgba(0,255,65,0.05);
-            transition: all 0.3s;
-        }
-        .stream-card:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 10px 30px rgba(0,255,65,0.15);
-            border-color: var(--neon-green);
-        }
-        .stream-info {
-            padding: 16px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .stream-left {
-            flex: 1;
-        }
-        .stream-nick {
-            font-weight: 700;
-            font-size: 17px;
-            color: var(--neon-green);
-        }
-        .stream-loc {
-            font-size: 14px;
-            opacity: 0.7;
-            margin-top: 2px;
-        }
-        .stream-viewers {
-            font-size: 15px;
-            color: var(--neon-purple);
-            font-weight: 600;
-        }
-        .watch-btn {
-            background: linear-gradient(90deg, var(--neon-green), #00cc33);
-            color: #000;
-            border: none;
-            padding: 12px 20px;
-            border-radius: 12px;
-            font-weight: 800;
-            font-size: 15px;
-            box-shadow: 0 4px 15px rgba(0,255,65,0.4);
-        }
-        .carrier-btn {
-            position: fixed;
-            bottom: 20px;
-            left: 20px;
-            right: 20px;
-            background: linear-gradient(90deg, var(--neon-green), var(--neon-purple));
-            color: #000;
-            border: none;
-            padding: 18px;
-            border-radius: 20px;
-            font-size: 20px;
-            font-weight: 900;
-            box-shadow: 0 8px 30px rgba(0,255,65,0.5);
-            z-index: 100;
-        }
+        .top { margin:30px 0; }
+        .stream { background:#111; padding:15px; margin:10px; border-radius:15px; }
     </style>
 </head>
 <body>
-    <div class="header">
-        <div class="glow-bg"></div>
-        <svg class="logo" viewBox="0 0 100 100">
-            <circle cx="50" cy="30" r="18" fill="#000" stroke="var(--neon-green)" stroke-width="3"/>
-            <rect x="38" y="48" width="24" height="35" fill="var(--neon-green)" rx="4"/>
-            <line x1="38" y1="83" x2="28" y2="95" stroke="var(--neon-green)" stroke-width="6" stroke-linecap="round"/>
-            <line x1="62" y1="83" x2="72" y2="95" stroke="var(--neon-green)" stroke-width="6" stroke-linecap="round"/>
-        </svg>
-        <h1>SURROGAT</h1>
-        <div class="subtitle">Мгновенно окажись в хайпе от первого лица</div>
+    <h1>SURROGAT</h1>
+    <p>Живые POV-стримы от первого лица<br>15⭐ = 15 минут эксклюзива</p>
+
+    <div class="top">
+        <h2>Топ сейчас</h2>
+        <div class="stream">@moscow_live — Красная площадь — 1500 зрителей</div>
+        <div class="stream">@iceland_volcano — Активный вулкан — 1200 зрителей</div>
+        <div class="stream">@miami_storm — Ураган в прямом эфире — 1000 зрителей</div>
     </div>
 
-    <div class="map">Карта хайпа (скоро здесь метки носителей)</div>
-
-    <div class="top-title">Топ-10 самых просматриваемых</div>
-    <div class="stream-list">
-        <!-- Пример карточки — остальные 9 такие же -->
-        <div class="stream-card">
-            <div class="stream-info">
-                <div class="stream-left">
-                    <div class="stream-nick">@moscow_live</div>
-                    <div class="stream-loc">Красная площадь, Москва</div>
-                </div>
-                <div class="stream-viewers">1500 зрителей</div>
-                <button class="watch-btn" onclick="watch(1)">15⭐ / 15 мин</button>
-            </div>
-        </div>
-        <!-- Остальные 9 карточек я уже вставил в полный код ниже -->
-    </div>
-
-    <button class="carrier-btn" onclick="becomeCarrier()">Я носитель — начать стрим</button>
+    <button class="btn" onclick="payAndWatch()">Смотреть стрим — 15⭐ / 15 мин</button>
+    <button class="btn" onclick="becomeCarrier()">Я носитель — начать стрим</button>
 
     <script>
         const tg = window.Telegram.WebApp;
         tg.ready(); tg.expand();
 
-        function watch(id) {
-            tg.showAlert('Оплата 15⭐ за 15 минут приватного POV-стрима');
-            // tg.openInvoice({...}) будет здесь
+        function payAndWatch() {
+            tg.openInvoice({
+                title: 'Приватный POV-стрим 15 минут',
+                description: 'Эксклюзивный доступ к трансляции от первого лица',
+                payload: 'test_1',
+                provider_token: '', // в тесте оставляем пустым
+                currency: 'XTR',
+                prices: [{ label: '15 минут стрима', amount: 15 }],
+                need_name: false,
+                need_phone_number: false,
+                need_email: false,
+                need_shipping_address: false,
+                is_flexible: false
+            }, (success) => {
+                if (success) {
+                    tg.showAlert('Оплата прошла! Стрим начинается...');
+                    // Здесь будет открытие стрима
+                }
+            });
         }
+
         function becomeCarrier() {
-            tg.showAlert('Камера + гео включены!\nТы уже в топе 🔥');
+            tg.showAlert('Камера + геолокация включены!\nТы в топе. Ждём первых зрителей ');
+            // Здесь будет включение камеры и добавление в топ
         }
     </script>
 </body>
