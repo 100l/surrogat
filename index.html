@@ -84,4 +84,12 @@
       document.body.innerHTML = `
         <video id="v" autoplay playsinline muted style="transform:scaleX(-1)"></video>
         <div style="position:fixed;bottom:30px;left:20px;right:20px;background:rgba(255,0,0,0.7);padding:20px;border-radius:20px;color:#fff">
-          Ты в эфире! Жд
+          Ты в эфире! Ждём приватных суррогатов
+        </div>`;
+
+      document.getElementById('v').srcObject = stream;
+      tg.showAlert('Ты в эфире! Ожидаем первых суррогатов');
+    };
+  </script>
+</body>
+</html>
