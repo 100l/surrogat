@@ -12,15 +12,25 @@
     .back{position:fixed;top:15px;left:15px;background:rgba(255,255,255,0.2);padding:12px 20px;border-radius:50px;z-index:999;font-size:28px;cursor:pointer}
     .switch{position:fixed;bottom:100px;left:50%;transform:translateX(-50%);background:rgba(255,255,255,0.3);padding:15px 40px;border-radius:50px;z-index:999;cursor:pointer}
     video{width:100vw;height:100vh;object-fit:cover}
-    .status{position:fixed;bottom:0;left:0;right:0;padding:20px;background:rgba(0,0,0,0.8);text-align:center}
+    .status{position:fixed;bottom:0;left:0;right:0;padding:20px;background:rgba(0,0,0,0.8);text-align:center;color:#0f0}
   </style>
 </head>
 <body>
 
   <div id="main">
     <h1>SURROGAT</h1>
-    <button class="btn" onclick="watch()">Смотреть стрим</button>
-    <button class="btn" onclick="startCarrier()">Я носитель — начать стрим</button>
+    <button class="btn" onclick="watchPublic()">Смотреть публичный стрим</button>
+    <button class="btn" onclick="privateMenu()">Приватный суррогат (голосовые команды)</button>
+    <button class="btn" onclick="becomeCarrier()">Я носитель — начать стрим</button>
+  </div>
+
+  <div id="privateMenu" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:#000;z-index:10;padding-top:80px">
+    <div class="back" onclick="back()">Назад</div>
+    <h2 style="color:#0f0;margin-bottom:30px">Приватный суррогат</h2>
+    <button class="btn" onclick="pay(10,1500)">10 мин — 1500 ⭐</button>
+    <button class="btn" onclick="pay(30,3000)">30 мин — 3000 ⭐</button>
+    <button class="btn" onclick="pay(60,5000)">60 мин — 5000 ⭐</button>
+    <p style="margin-top:30px;color:#888">платформа берёт 5%</p>
   </div>
 
   <script>
@@ -29,19 +39,43 @@
 
     let pc = null;
     let stream = null;
-    let roomId = null;
-
-    // Генерируем уникальный ID комнаты для носителя
-    function generateRoom() {
-      return Math.random().toString(36).substr(2, 9);
-    }
+    let roomId = "public"; // публичный стрим
+    const ws = new WebSocket('wss://surrogat-signal.deno.dev');
 
     function back() { location.reload(); }
 
-    // === НОСИТЕЛЬ ===
-    async function startCarrier() {
-      roomId = generateRoom();  // ← своя комната
+    // ПУБЛИЧНЫЙ СТРИМ
+    function watchPublic() {
+      roomId = "public";
+      startViewer();
+    }
 
+    // ПРИВАТ — МЕНЮ
+    function privateMenu() {
+      document.getElementById("main").style.display = "none";
+      document.getElementById("privateMenu").style.display = "block";
+    }
+
+    // ОПЛАТА → ПРИВАТНЫЙ КОД
+    function pay(minutes, stars) {
+      tg.openInvoice({
+        title: `Приватный суррогат — ${minutes} мин`,
+        description: 'Эксклюзив + голосовые команды',
+        payload: 'private',
+        provider_token: '',
+        currency: 'XTR',
+        prices: [{ label: `${minutes} мин`, amount: stars }]
+      }, (success) => {
+        if (success) {
+          roomId = Math.random().toString(36).substr(2, 9);
+          tg.showAlert(`Твой приватный код: ${roomId}\nСкинь его носителю!`);
+          startViewer();
+        }
+      });
+    }
+
+    // НОСИТЕЛЬ
+    async function becomeCarrier() {
       let facing = confirm("Фронтальная камера?") ? "user" : "environment";
       stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:facing}, audio:true});
 
@@ -49,77 +83,55 @@
         <div class="back" onclick="back()">Назад</div>
         <video id="local" autoplay playsinline muted style="transform:scaleX(-1)"></video>
         <div class="switch" onclick="switchCam()">Сменить камеру</div>
-        <div class="status">
-          <p>Ты в эфире!<br>Комната: <b>${roomId}</b><br>Скинь этот код зрителю</p>
-        </div>`;
+        <div class="status">Ты в публичном эфире + принимаешь приваты</div>`;
 
       document.getElementById("local").srcObject = stream;
-
-      pc = new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
-      stream.getTracks().forEach(t => pc.addTrack(t, stream));
-
-      pc.onicecandidate = e => e.candidate && send({candidate: e.candidate});
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      send({offer, roomId});
+      startHost();
     }
 
-    window.switchCam = async () => {
+    window.switchCam = async () => { /* тот же код смены камеры, как раньше */ 
       if (!stream) return;
       const old = stream.getVideoTracks()[0];
       const newFacing = old.getSettings().facingMode === 'user' ? 'environment' : 'user';
       const newStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:newFacing}, audio:true});
-      const newTrack = newStream.getVideoTracks()[0];
       const sender = pc.getSenders().find(s => s.track.kind === 'video');
-      sender.replaceTrack(newTrack);
+      sender.replaceTrack(newStream.getVideoTracks()[0]);
       old.stop();
       stream.removeTrack(old);
-      stream.addTrack(newTrack);
+      stream.addTrack(newStream.getVideoTracks()[0]);
       document.getElementById("local").srcObject = stream;
     };
 
-    // === ЗРИТЕЛЬ ===
-    function watch() {
-      roomId = prompt("Введи код комнаты носителя:", "");
-      if (!roomId) return back();
+    // ХОСТ (носитель)
+    function startHost() {
+      pc = new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
+      stream.getTracks().forEach(t => pc.addTrack(t, stream));
+      pc.onicecandidate = e => e.candidate && send({candidate: e.candidate});
+      pc.createOffer().then(o => pc.setLocalDescription(o).then(() => send({offer: o, roomId: "public"})));
+    }
 
-      document.body.innerHTML = `
-        <div class="back" onclick="back()">Назад</div>
-        <video id="remote" autoplay playsinline></video>
-        <div class="status">Подключение к комнате ${roomId}…</div>`;
-
+    // ЗРИТЕЛЬ
+    function startViewer() {
+      document.body.innerHTML = `<div class="back" onclick="back()">Назад</div><video id="remote" autoplay playsinline></video><div class="status">Подключение…</div>`;
       pc = new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
       pc.ontrack = e => {
         document.getElementById("remote").srcObject = e.streams[0];
-        document.querySelector('.status').innerHTML = 'Подключено! Наслаждайся POV';
-        document.querySelector('.status').style.background = 'rgba(0,100,0,0.8)';
+        document.querySelector('.status').textContent = roomId === "public" ? "Публичный стрим" : "Приватный суррогат";
       };
-
       pc.onicecandidate = e => e.candidate && send({candidate: e.candidate, roomId});
-      send({roomId}); // запрашиваем offer
+      send({requestOffer: true, roomId});
     }
-
-    // === Сигнальный сервер (мой, работает 24/7) ===
-    const ws = new WebSocket('wss://surrogat-signal.deno.dev');
 
     function send(data) {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({roomId, ...data}));
-      }
+      if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({roomId, ...data}));
     }
 
-    ws.onmessage = async (msg) => {
-      const data = JSON.parse(msg.data);
-      if (data.roomId !== roomId) return;
-
-      if (data.offer) {
-        await pc.setRemoteDescription(data.offer);
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        send({answer});
-      }
-      if (data.answer) await pc.setRemoteDescription(data.answer);
-      if (data.candidate) await pc.addIceCandidate(data.candidate);
+    ws.onmessage = async e => {
+      const d = JSON.parse(e.data);
+      if (d.roomId !== roomId) return;
+      if (d.offer) { await pc.setRemoteDescription(d.offer); const a = await pc.createAnswer(); await pc.setLocalDescription(a); send({answer: a}); }
+      if (d.answer) await pc.setRemoteDescription(d.answer);
+      if (d.candidate) await pc.addIceCandidate(d.candidate);
     };
   </script>
 </body>
