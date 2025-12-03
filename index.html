@@ -5,206 +5,133 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SURROGAT</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script src="https://cdn.100ms.live/sdk/hms-sdk.js"></script> <!-- 100ms SDK -->
-  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database.js"></script>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+  <script src="https://cdn.100ms.live/v2/hms.js"></script>
   <style>
     body {margin:0;background:#000;color:#fff;font-family:sans-serif;text-align:center;padding:20px}
     h1{font-size:38px;margin:30px 0 10px;background:linear-gradient(90deg,#00ff41,#b026ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
     p{font-size:18px;opacity:0.9;line-height:1.5}
-    .btn{background:linear-gradient(90deg,#00ff41,#b026ff);color:#000;font-weight:900;font-size:22px;padding:20px;border-radius:20px;border:none;width:92%;margin:20px auto;display:block;box-shadow:0 10px 40px rgba(0,255,65,0.5)}
-    #map {height:200px;margin:20px auto;border:2px solid #00ff41;border-radius:15px}
-    .stream-list{padding:0 15px}
-    .stream-card{background:#111;margin:15px 0;padding:15px;border-radius:15px;display:flex;justify-content:space-between;align-items:center;box-shadow:0 4px 20px rgba(0,255,65,0.1)}
-    .stream-card:hover {box-shadow:0 4px 20px rgba(0,255,65,0.3)}
-    .stream-left{flex:1}
-    .stream-nick{font-weight:700;color:#00ff41}
-    .stream-loc{font-size:14px;opacity:0.7}
-    .stream-viewers{color:#b026ff;font-weight:600}
-    .watch-btn{background:#00ff41;color:#000;padding:10px 20px;border-radius:12px;border:none;font-weight:700}
-    .private-btn{background:#b026ff;color:#000;padding:10px 20px;border-radius:12px;border:none;font-weight:700}
+    .btn{background:linear-gradient(90deg,#00ff41,#b026ff);color:#000;font-weight:900;font-size:22px;padding:20px;border-radius:20px;border:none;width:92%;margin:20px auto;display:block;box-shadow:0 10px 40px rgba(0,255,65,0.5);cursor:pointer}
+    .menu {display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.9);z-index:10;padding:100px 20px}
+    .menu-btn {background:#111;padding:15px;border-radius:15px;margin:15px 0;cursor:pointer}
+    video {width:100%;height:100vh;object-fit:cover}
   </style>
 </head>
 <body>
 
   <h1>SURROGAT</h1>
-  <p>Бесплатный просмотр публичных стримов<br>Приватный суррогат с командами — 15 ⭐ / 15 мин</p>
+  <p>Бесплатный публичный просмотр<br>Приватный суррогат с командами — от 1500 ⭐</p>
 
-  <button class="btn" id="watchPublic">Смотреть публичные стримы</button>
-  <button class="btn" id="startStream">Стримить</button>
+  <button class="btn" id="watchPublic">Смотреть публичный бесплатно</button>
+  <button class="btn" id="startPrivate">Приватный суррогат</button>
+  <button class="btn" id="becomeCarrier">Я носитель — начать стрим</button>
 
-  <div id="map" style="display:none"></div>
-  <div id="streamList" style="display:none" class="stream-list"></div>
+  <div id="privateMenu" class="menu">
+    <button class="menu-btn" onclick="selectPrivate(10)">10 мин — 1500 ⭐</button>
+    <button class="menu-btn" onclick="selectPrivate(30)">30 мин — 3000 ⭐</button>
+    <button class="menu-btn" onclick="selectPrivate(60)">60 мин — 5000 ⭐</button>
+  </div>
+
+  <div id="cameraMenu" class="menu">
+    <button class="menu-btn" onclick="selectCamera('user')">Фронтальная камера</button>
+    <button class="menu-btn" onclick="selectCamera('environment')">Основная камера</button>
+  </div>
 
   <script>
     const tg = Telegram.WebApp;
     tg.ready(); tg.expand();
 
-    // Firebase config (вставь свой)
-    const firebaseConfig = {
-      apiKey: "YOUR_API_KEY",
-      authDomain: "surrogat.firebaseapp.com",
-      databaseURL: "https://surrogat-default-rtdb.firebaseio.com",
-      projectId: "surrogat",
-      storageBucket: "surrogat.appspot.com",
-      messagingSenderId: "YOUR_SENDER_ID",
-      appId: "YOUR_APP_ID"
-    };
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.database();
+    const ROOM_ID = "6757f3f0c5b0c71b1e8b4567"; // Твой room в 100ms
+    const TOKEN_ENDPOINT = "https://surrogat-token.deno.dev/token"; // Токен-сервер
 
-    // 100ms config (вставь свой)
-    const HMS_APP_ACCESS_KEY = "YOUR_100MS_ACCESS_KEY";
-    const HMS_APP_SECRET = "YOUR_100MS_SECRET";
-    const HMS_TEMPLATE_ID = "YOUR_TEMPLATE_ID";
+    const privateMenu = document.getElementById('privateMenu');
+    const cameraMenu = document.getElementById('cameraMenu');
+    let selectedTime = 0;
+    let selectedFacing = 'environment'; // По умолчанию основная
 
-    // Карта
-    const map = L.map('map').setView([51.5, -0.09], 3);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-
-    // Список стримов (динамический из Firebase)
-    const streamList = document.getElementById('streamList');
-    db.ref('streams').on('value', snapshot => {
-      streamList.innerHTML = '';
-      const streams = snapshot.val();
-      let top = Object.entries(streams || {}).sort((a,b) => b[1].viewers - a[1].viewers).slice(0,10);
-      top.forEach(([id, data]) => {
-        const card = document.createElement('div');
-        card.className = 'stream-card';
-        card.innerHTML = `
-          <div class="stream-left">
-            <div class="stream-nick">@${data.nick}</div>
-            <div class="stream-loc">${data.loc}</div>
-          </div>
-          <div class="stream-viewers">${data.viewers} зрителей</div>
-          <button class="watch-btn" onclick="watchPublic('${id}')">Смотреть бесплатно</button>
-          <button class="private-btn" onclick="startPrivate('${id}')">Приват — 15 ⭐</button>
-        `;
-        streamList.appendChild(card);
+    // Публичный просмотр
+    document.getElementById('watchPublic').addEventListener('click', async () => {
+      const token = await fetch(`${TOKEN_ENDPOINT}?room=${ROOM_ID}&role=viewer`).then(res => res.text());
+      const hms = HMS.create({ token });
+      hms.join({ userName: 'Зритель' });
+      document.body.innerHTML = '<video id="video" autoplay playsinline></video>';
+      hms.on('track', track => {
+        if (track.kind === 'video') track.attach(document.getElementById('video'));
       });
     });
 
-    // Кнопка "Смотреть публичные"
-    document.getElementById('watchPublic').onclick = () => {
-      document.getElementById('map').style.display = 'block';
-      streamList.style.display = 'block';
-      // Добавляем метки на карту из Firebase
-      db.ref('streams').once('value', snapshot => {
-        const streams = snapshot.val();
-        for (let id in streams) {
-          L.marker([streams[id].lat, streams[id].lon]).addTo(map).bindPopup(streams[id].nick);
-        }
-      });
-    };
+    // Приватный суррогат (показываем меню времени)
+    document.getElementById('startPrivate').addEventListener('click', () => {
+      privateMenu.style.display = 'block';
+    });
 
-    // Бесплатный просмотр публичного стрима
-    window.watchPublic = async (roomId) => {
-      const token = await fetch(`https://api.100ms.live/v2/rooms/${roomId}/tokens`, {
-        method: 'POST',
-        headers: {'Authorization': `Bearer ${btoa(`${HMS_APP_ACCESS_KEY}:${HMS_APP_SECRET}`)}`, 'Content-Type': 'application/json'},
-        body: JSON.stringify({role: 'viewer'})
-      }).then(res => res.json()).then(data => data.token);
+    // Выбор времени и оплата
+    window.selectPrivate = (minutes) => {
+      privateMenu.style.display = 'none';
+      selectedTime = minutes;
+      let stars = minutes * 50; // 10мин=500? Wait, per your: 10=1500,30=3000,60=5000
+      if (minutes === 10) stars = 1500;
+      if (minutes === 30) stars = 3000;
+      if (minutes === 60) stars = 5000;
 
-      const hms = new HMS.SDK();
-      hms.init(token);
-      await hms.join({userName: tg.initDataUnsafe.user.first_name || 'Зритель'});
-
-      document.body.innerHTML = `<video id="video" autoplay playsinline></video>`;
-      hms.on(HMS.Event.TRACK_ADD, (track) => {
-        if (track.kind === 'video') track.attach(document.getElementById('video'));
-      });
-
-      // Обновляем зрителей
-      db.ref(`streams/${roomId}/viewers`).transaction(v => (v || 0) + 1);
-    };
-
-    // Кнопка "Стримить"
-    document.getElementById('startStream').onclick = async () => {
-      tg.requestLocation((loc) => {
-        const room = await fetch('https://api.100ms.live/v2/rooms', {
-          method: 'POST',
-          headers: {'Authorization': `Bearer ${btoa(`${HMS_APP_ACCESS_KEY}:${HMS_APP_SECRET}`)}`, 'Content-Type': 'application/json'},
-          body: JSON.stringify({template_id: HMS_TEMPLATE_ID})
-        }).then(res => res.json());
-
-        const roomId = room.id;
-
-        db.ref(`streams/${roomId}`).set({
-          nick: tg.initDataUnsafe.user.username || 'Носитель',
-          loc: `Широта ${loc.latitude}, Долгота ${loc.longitude}`,
-          lat: loc.latitude,
-          lon: loc.longitude,
-          viewers: 0,
-          rating: 0
-        });
-
-        const stream = await navigator.mediaDevices.getUserMedia({video: true, audio: true});
-
-        const token = await fetch(`https://api.100ms.live/v2/rooms/${roomId}/tokens`, {
-          method: 'POST',
-          headers: {'Authorization': `Bearer ${btoa(`${HMS_APP_ACCESS_KEY}:${HMS_APP_SECRET}`)}`, 'Content-Type': 'application/json'},
-          body: JSON.stringify({role: 'host'})
-        }).then(res => res.json()).then(data => data.token);
-
-        const hms = new HMS.SDK();
-        hms.init(token);
-        await hms.join({userName: 'Носитель'});
-
-        hms.publish(stream);
-
-        document.body.innerHTML = `<video id="video" autoplay playsinline muted style="width:100%;height:100vh;object-fit:cover;transform:scaleX(-1)"></video>`;
-        stream.getVideoTracks()[0].attach(document.getElementById('video'));
-      });
-    };
-
-    // Приватный суррогат
-    window.startPrivate = (roomId) => {
       tg.openInvoice({
-        title: 'Приватный суррогат — 15 минут',
-        description: 'Эксклюзив + голосовые команды (комиссия платформы 3 ⭐)',
-        payload: roomId,
+        title: `Приватный суррогат — ${minutes} минут`,
+        description: 'Эксклюзив + голосовые команды. Комиссия платформы 5%',
+        payload: 'private_surrogat_' + minutes,
         provider_token: '',
         currency: 'XTR',
-        prices: [{ label: '15 мин', amount: 15 }]
+        prices: [{ label: `${minutes} мин`, amount: stars }]
       }, async (success) => {
         if (success) {
-          // Симуляция комиссии: 12 носителю, 3 платформе (в реале — через bot wallet)
-          console.log('Комиссия платформы 3 ⭐');
+          // Комиссия 5% (симуляция — в реале backend отнимает)
+          const commission = stars * 0.05;
+          console.log(`Комиссия платформы: ${commission} ⭐`);
 
-          // Подключение к приватному
-          const token = await fetch(`https://api.100ms.live/v2/rooms/${roomId}/tokens`, {
-            method: 'POST',
-            headers: {'Authorization': `Bearer ${btoa(`${HMS_APP_ACCESS_KEY}:${HMS_APP_SECRET}`)}`, 'Content-Type': 'application/json'},
-            body: JSON.stringify({role: 'viewer'})
-          }).then(res => res.json()).then(data => data.token);
-
-          const hms = new HMS.SDK();
-          hms.init(token);
-          await hms.join({userName: 'Суррогат'});
-
-          const stream = await navigator.mediaDevices.getUserMedia({audio: true}); // Голос для команд
-          hms.publish(stream.getAudioTracks()[0]);
-
-          document.body.innerHTML = `<video id="video" autoplay playsinline></video>`;
-          hms.on(HMS.Event.TRACK_ADD, (track) => {
+          // Подключаемся к приватному стриму
+          const token = await fetch(`${TOKEN_ENDPOINT}?room=${ROOM_ID}&role=viewer`).then(res => res.text());
+          const hms = HMS.create({ token });
+          hms.join({ userName: 'Суррогат' });
+          const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          hms.publish(audioStream.getAudioTracks()[0]);
+          document.body.innerHTML = '<video id="video" autoplay playsinline></video>';
+          hms.on('track', track => {
             if (track.kind === 'video') track.attach(document.getElementById('video'));
           });
-
-          // Рейтинг после 15 мин
+          // Таймер на окончание
           setTimeout(() => {
+            hms.leave();
+            tg.showAlert('Время приватного суррогата закончилось. Оцените носителя');
+            // Рейтинг
             tg.showPopup({
               title: 'Оцените носителя',
               message: '1-5 звёзд',
-              buttons: [{text: '1⭐'},{text: '2⭐'},{text: '3⭐'},{text: '4⭐'},{text: '5⭐'}]
-            }, (btn) => {
-              const rating = parseInt(btn.text[0]);
-              db.ref(`streams/${roomId}/rating`).transaction(r => ((r || 0) + rating) / 2);
+              buttons: [{text: '1⭐', id: '1'}, {text: '2⭐', id: '2'}, {text: '3⭐', id: '3'}, {text: '4⭐', id: '4'}, {text: '5⭐', id: '5'}]
+            }, (buttonId) => {
+              console.log('Рейтинг: ' + buttonId.id);
+              // Сохранить в Firebase
             });
-          }, 15 * 60 * 1000);
+          }, minutes * 60 * 1000);
         }
       });
+    };
+
+    // Стримить (показываем меню камеры)
+    document.getElementById('becomeCarrier').addEventListener('click', () => {
+      cameraMenu.style.display = 'block';
+    });
+
+    // Выбор камеры и начало стрима
+    window.selectCamera = async (facingMode) => {
+      cameraMenu.style.display = 'none';
+      selectedFacing = facingMode;
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: selectedFacing }, audio: true });
+      const token = await fetch(`${TOKEN_ENDPOINT}?room=${ROOM_ID}&role=host`).then(res => res.text());
+      const hms = HMS.create({ token });
+      hms.join({ userName: 'Носитель' });
+      hms.publish(stream);
+      document.body.innerHTML = '<video id="video" autoplay playsinline muted style="width:100%;height:100vh;object-fit:cover;transform:scaleX(-1)"></video>';
+      stream.getVideoTracks()[0].attach(document.getElementById('video'));
+      // Рейтинг после
+      tg.showPopup({title: 'Оцените зрителя', ...}); // Аналогично для носителя
     };
   </script>
 </body>
