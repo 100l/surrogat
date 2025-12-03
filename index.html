@@ -1,68 +1,90 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SURROGAT</title>
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <style>
-        body { margin:0; background:#000; color:#fff; font-family:sans-serif; padding:20px; text-align:center; }
-        h1 { font-size:36px; margin:20px 0 10px; }
-        p { opacity:0.8; font-size:18px; }
-        .btn { 
-            background:linear-gradient(90deg,#00ff41,#b026ff); 
-            color:#000; font-weight:900; font-size:20px; 
-            padding:20px; border-radius:20px; border:none; 
-            width:90%; margin:20px auto; display:block;
-            box-shadow:0 10px 30px rgba(0,255,65,0.4);
-        }
-        .top { margin:30px 0; }
-        .stream { background:#111; padding:15px; margin:10px; border-radius:15px; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SURROGAT</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="https://cdn.100ms.live/v2/hms.js"></script>
+  <style>
+    body{margin:0;background:#000;color:#fff;font-family:sans-serif;padding:20px;text-align:center}
+    h1{font-size:38px;margin:30px 0 10px;background:linear-gradient(90deg,#00ff41,#b026ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+    p{font-size:18px;opacity:0.9;line-height:1.5}
+    .btn{background:linear-gradient(90deg,#00ff41,#b026ff);color:#000;font-weight:900;font-size:22px;padding:20px;border-radius:20px;border:none;width:92%;margin:20px auto;display:block;box-shadow:0 10px 40px rgba(0,255,65,0.5)}
+    .free{color:#0f0;font-size:14px;margin-top:-15px}
+    video{width:100vw;height:100vh;object-fit:cover;background:#000}
+  </style>
 </head>
 <body>
-    <h1>SURROGAT</h1>
-    <p>Живые POV-стримы от первого лица<br>15⭐ = 15 минут эксклюзива</p>
 
-    <div class="top">
-        <h2>Топ сейчас</h2>
-        <div class="stream">@moscow_live — Красная площадь — 1500 зрителей</div>
-        <div class="stream">@iceland_volcano — Активный вулкан — 1200 зрителей</div>
-        <div class="stream">@miami_storm — Ураган в прямом эфире — 1000 зрителей</div>
-    </div>
+  <h1>SURROGAT</h1>
+  <p>Смотри бесплатно — управляй за звёзды</p>
 
-    <button class="btn" onclick="payAndWatch()">Смотреть стрим — 15⭐ / 15 мин</button>
-    <button class="btn" onclick="becomeCarrier()">Я носитель — начать стрим</button>
+  <!-- Бесплатный просмотр (всегда работает) -->
+  <button class="btn" id="freeWatch">Смотреть публичный стрим бесплатно</button>
+  <p class="free">или</p>
 
-    <script>
-        const tg = window.Telegram.WebApp;
-        tg.ready(); tg.expand();
+  <!-- Приватный режим с оплатой и голосовыми командами -->
+  <button class="btn" id="privateBtn">Приватный суррогат — 15 ⭐ / 15 мин</button>
+  <p class="free">(ты один + голосовые команды носителю)</p>
 
-        function payAndWatch() {
-            tg.openInvoice({
-                title: 'Приватный POV-стрим 15 минут',
-                description: 'Эксклюзивный доступ к трансляции от первого лица',
-                payload: 'test_1',
-                provider_token: '', // в тесте оставляем пустым
-                currency: 'XTR',
-                prices: [{ label: '15 минут стрима', amount: 15 }],
-                need_name: false,
-                need_phone_number: false,
-                need_email: false,
-                need_shipping_address: false,
-                is_flexible: false
-            }, (success) => {
-                if (success) {
-                    tg.showAlert('Оплата прошла! Стрим начинается...');
-                    // Здесь будет открытие стрима
-                }
-            });
+  <script>
+    const tg = Telegram.WebApp;
+    tg.ready(); tg.expand();
+
+    const ROOM_ID = "6757f3f0c5b0c71b1e8b4567";
+    const TOKEN_ENDPOINT = "https://surrogat-token.deno.dev/token";
+
+    async function getToken(role) {
+      const res = await fetch(`${TOKEN_ENDPOINT}?room=${ROOM_ID}&role=${role}`);
+      return await res.text();
+    }
+
+    // БЕСПЛАТНЫЙ ПРОСМОТР
+    document.getElementById('freeWatch').onclick = async () => {
+      const token = await getToken('viewer');
+      const hms = HMS.create({ token });
+      hms.join({ userName: 'Зритель' });
+      document.body.innerHTML = `<video id="video" autoplay playsinline></video>`;
+      hms.on('track', track => {
+        if (track.kind === 'video') track.attach(document.getElementById('video'));
+      });
+    };
+
+    // ПРИВАТНЫЙ СУРРОГАТ (оплата + голосовые команды)
+    document.getElementById('privateBtn').onclick = () => {
+      tg.openInvoice({
+        title: 'Приватный суррогат — 15 минут',
+        description: 'Эксклюзивный стрим + голосовые команды носителю',
+        payload: 'private_15min',
+        provider_token: '',
+        currency: 'XTR',
+        prices: [{ label: '15 минут приватного суррогата', amount: 15 }]
+      }, async (success) => {
+        if (success) {
+          // После оплаты — отдельная приватная комната + голосовой канал
+          const token = await getToken('private_viewer');
+          const hms = HMS.create({ token });
+          hms.join({ userName: tg.initDataUnsafe.user.first_name + ' (приват)' });
+
+          document.body.innerHTML = `
+            <video id="video" autoplay playsinline></video>
+            <div style="position:fixed;bottom:20px;left:20px;right:20px;z-index:100">
+              <p style="background:rgba(0,0,0,0.7);padding:15px;border-radius:15px">
+                Говори голосом — носитель выполнит!<br>
+                Примеры: «повернись», «подойди ближе», «покажи цену»
+              </p>
+            </div>`;
+
+          hms.on('track', track => {
+            if (track.kind === 'video') track.attach(document.getElementById('video'));
+          });
+
+          // Включить микрофон зрителя для голосовых команд
+          tg.requestMicrophone?.();
         }
-
-        function becomeCarrier() {
-            tg.showAlert('Камера + геолокация включены!\nТы в топе. Ждём первых зрителей ');
-            // Здесь будет включение камеры и добавление в топ
-        }
-    </script>
+      });
+    };
+  </script>
 </body>
 </html>
