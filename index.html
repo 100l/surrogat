@@ -26,7 +26,7 @@
     <h1>SURROGAT</h1>
     <button class="btn" id="watchBtn">ОНЛАЙН НОСИТЕЛИ</button>
     <button class="btn" id="carrierBtn">Я НОСИТЕЛЬ — НАЧАТЬ</button>
-    <p style="text-align:center" class="small">Версия: fixed — безопасная работа с WebSocket и стабильный список</p>
+    <p style="text-align:center" class="small">Version: fixed — camera/websocket stabilisation</p>
   </div>
 
   <div id="list" style="display:none;padding-bottom:80px">
@@ -45,243 +45,205 @@
 
   <script>
     const tg = Telegram.WebApp;
-    try { tg.ready(); tg.expand(); } catch (e) { console.warn('Telegram WebApp not available', e); }
+    try { tg.ready(); tg.expand(); } catch(e){}
 
     const name = tg?.initDataUnsafe?.user?.first_name || "Гость";
 
-    // WebSocket URL (оставил ваш URL, при необходимости замените)
-    const WS_URL = 'wss://surrogat-open.deno.dev';
-
-    // --- WebSocket wrapper: очередь сообщений, авто-переподключение, ping/pong ---
-    let ws = null;
-    let wsQueue = [];
-    let reconnectTimer = null;
-    let reconnectAttempts = 0;
-    let pingInterval = null;
+    // === WebSocket ===
+    const WS_URL = "wss://surrogat-open.deno.dev";
+    let ws = null, wsQueue = [], reconnectTimer = null, pingInterval = null, reconnectAttempts = 0;
 
     function createWebSocket() {
-      if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+      if (ws && (ws.readyState === 0 || ws.readyState === 1)) return;
       ws = new WebSocket(WS_URL);
 
-      ws.addEventListener('open', () => {
-        console.log('WS open');
+      ws.onopen = () => {
         reconnectAttempts = 0;
-        // send queued messages
         while (wsQueue.length) ws.send(wsQueue.shift());
         startPing();
-      });
+      };
 
-      ws.addEventListener('message', onWSMessage);
+      ws.onclose = () => { stopPing(); scheduleReconnect(); };
+      ws.onerror = () => {};
+      ws.onmessage = onWSMessage;
+    }
 
-      ws.addEventListener('close', e => {
-        console.warn('WS closed', e);
-        stopPing();
-        scheduleReconnect();
-      });
-
-      ws.addEventListener('error', e => {
-        console.error('WS error', e);
-        // ошибка приведёт к close — обработчик close выполнится
-      });
+    function sendSafe(obj) {
+      const msg = JSON.stringify(obj);
+      if (ws?.readyState === 1) ws.send(msg);
+      else wsQueue.push(msg);
+      createWebSocket();
     }
 
     function scheduleReconnect() {
       if (reconnectTimer) return;
       reconnectAttempts++;
-      const timeout = Math.min(10000, 1000 * Math.pow(1.5, reconnectAttempts));
-      console.log('Reconnecting in', timeout);
-      reconnectTimer = setTimeout(() => {
-        reconnectTimer = null;
-        createWebSocket();
-      }, timeout);
-    }
-
-    function sendSafe(obj) {
-      const s = JSON.stringify(obj);
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(s);
-      } else {
-        // queue to send later
-        wsQueue.push(s);
-        createWebSocket();
-      }
+      const timeout = Math.min(8000, 500 * reconnectAttempts);
+      reconnectTimer = setTimeout(() => { reconnectTimer = null; createWebSocket(); }, timeout);
     }
 
     function startPing() {
       stopPing();
       pingInterval = setInterval(() => {
-        if (ws && ws.readyState === WebSocket.OPEN) {
-          try { ws.send(JSON.stringify({type:'ping', t:Date.now()})); } catch (e) { console.warn('Ping failed', e); }
-        }
+        if (ws?.readyState === 1) ws.send(JSON.stringify({type:"ping"}));
       }, 25000);
     }
+    function stopPing(){ if (pingInterval) clearInterval(pingInterval); pingInterval=null; }
 
-    function stopPing() { if (pingInterval) { clearInterval(pingInterval); pingInterval = null; } }
-
-    // Инициализация сразу, но без отправки join — посылаем при необходимости
     createWebSocket();
 
-    // UI references
-    const mainEl = document.getElementById('main');
-    const listEl = document.getElementById('list');
-    const streamEl = document.getElementById('stream');
-    const onlineDiv = document.getElementById('online');
-    const localVideo = document.getElementById('localVideo');
-    const statusBar = document.getElementById('statusBar');
+    // === UI refs ===
+    const mainEl = document.getElementById("main");
+    const listEl = document.getElementById("list");
+    const streamEl = document.getElementById("stream");
+    const onlineDiv = document.getElementById("online");
+    const localVideo = document.getElementById("localVideo");
+    const statusBar = document.getElementById("statusBar");
 
-    // Переменные состояния
     let localStream = null;
-    let myRoomId = null; // существует, если мы в эфире
+    let myRoomId = null;
     let listUpdater = null;
 
-    // Обработчики UI
-    document.getElementById('watchBtn').addEventListener('click', () => watch());
-    document.getElementById('carrierBtn').addEventListener('click', () => carrier());
-    document.getElementById('backFromList').addEventListener('click', () => showMainFromList());
-    document.getElementById('backFromStream').addEventListener('click', () => stopStreamAndShowMain());
-    document.getElementById('switchCam').addEventListener('click', () => switchCam());
+    document.getElementById("watchBtn").onclick = watch;
+    document.getElementById("carrierBtn").onclick = carrier;
+    document.getElementById("backFromList").onclick = showMainFromList;
+    document.getElementById("backFromStream").onclick = stopStreamAndShowMain;
+    document.getElementById("switchCam").onclick = switchCam;
 
-    // Показываем список — зритель
-    function watch() {
-      mainEl.style.display = 'none';
-      streamEl.style.display = 'none';
-      listEl.style.display = 'block';
-      // зарегистрироваться как зритель (опционально)
-      sendSafe({type:'viewer_join', name});
+    // === WATCH ===
+    function watch(){
+      mainEl.style.display="none";
+      listEl.style.display="block";
+      sendSafe({type:"viewer_join", name});
       updateList();
-      if (!listUpdater) listUpdater = setInterval(updateList, 3000);
+      listUpdater = setInterval(updateList, 3000);
     }
 
-    function showMainFromList() {
-      listEl.style.display = 'none';
-      if (listUpdater) { clearInterval(listUpdater); listUpdater = null; }
-      // уведомим сервер что мы больше не зритель
-      sendSafe({type:'viewer_leave', name});
-      mainEl.style.display = 'block';
+    function showMainFromList(){
+      listEl.style.display="none";
+      if (listUpdater) { clearInterval(listUpdater); listUpdater=null; }
+      sendSafe({type:"viewer_leave", name});
+      mainEl.style.display="block";
     }
 
-    // Начать эфир — носитель
-    async function carrier() {
+    // === CARRIER ===
+    async function carrier(){
       try {
-        localStream = await navigator.mediaDevices.getUserMedia({video:true, audio:true});
-        myRoomId = 'room_' + Date.now() + '_' + Math.random().toString(36).substr(2,6);
+        tg.expand();
 
-        // Показываем UI стрима
-        mainEl.style.display = 'none';
-        listEl.style.display = 'none';
-        streamEl.style.display = 'block';
+        // FIX #1 — дополнительная гарантия Telegram WebView
+        await navigator.mediaDevices.getUserMedia({video:true}).catch(()=>{});
+
+        // FIX #2 — правильный запрос под Telegram WebView
+        localStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: "user",
+            width: {ideal:1280},
+            height: {ideal:720}
+          },
+          audio: true
+        });
+
+        myRoomId = "room_"+Date.now()+"_"+Math.random().toString(36).slice(2,6);
+
+        mainEl.style.display="none";
+        listEl.style.display="none";
+        streamEl.style.display="block";
+
+        // FIX #3 — обязательные атрибуты для Telegram
         localVideo.srcObject = localStream;
+        localVideo.muted = true;
+        localVideo.setAttribute("muted", "");
+        localVideo.playsInline = true;
+        localVideo.setAttribute("playsinline", "");
+
+        // FIX #4 — прямой запуск
+        await localVideo.play().catch(()=>{});
+
         statusBar.innerHTML = `Ты в эфире как <b>${escapeHtml(name)}</b>`;
 
-        // Отправляем join на сервер
-        sendSafe({type:'join', roomId: myRoomId, name});
+        sendSafe({type:"join", roomId: myRoomId, name});
 
-      } catch (e) {
-        alert('Камера не доступна: ' + (e && e.message ? e.message : e));
-        console.error(e);
+      } catch(e){
+        alert("Камера не доступна: "+(e.message||e));
       }
     }
 
-    // Остановить эфир корректно
-    function stopStreamAndShowMain() {
-      if (localStream) {
-        // остановим все треки
-        localStream.getTracks().forEach(t => t.stop());
+    function stopStreamAndShowMain(){
+      if (localStream){
+        localStream.getTracks().forEach(t=>t.stop());
         localStream = null;
       }
-      if (myRoomId) {
-        sendSafe({type:'leave', roomId: myRoomId, name});
-        myRoomId = null;
+      if (myRoomId){
+        sendSafe({type:"leave", roomId: myRoomId, name});
+        myRoomId=null;
       }
-      // вернуться в главное меню
-      streamEl.style.display = 'none';
-      mainEl.style.display = 'block';
+      streamEl.style.display="none";
+      mainEl.style.display="block";
     }
 
-    // Обновить список онлайн
-    function updateList() {
-      // отправляем запрос только если socket готов или поставим в очередь
-      sendSafe({type:'list'});
-    }
+    // === LIST ===
+    function updateList(){ sendSafe({type:"list"}); }
 
-    // Обработка входящих сообщений от сервера
-    function onWSMessage(e) {
+    function onWSMessage(e){
       let d;
-      try { d = JSON.parse(e.data); } catch (err) { console.warn('Invalid JSON', e.data); return; }
+      try{ d=JSON.parse(e.data); }catch{return;}
 
-      // поддерживаем несколько возможных типов
-      const list = d.users || d.online || d.list || null;
-      if (Array.isArray(list)) {
-        renderList(list);
-        return;
-      }
-
-      // ответ на join/leave
-      if (d.type === 'joined') {
-        console.log('Server ack joined', d);
-      }
-      if (d.type === 'pong') {
-        // время отклика
-        // console.log('pong', d);
-      }
-
-      // diagnostics
-      if (d.type && !list) console.log('WS message', d);
+      const list = d.users || d.online || d.list;
+      if (Array.isArray(list)) return renderList(list);
     }
 
-    function renderList(users) {
-      onlineDiv.innerHTML = '';
-      if (users.length === 0) {
-        onlineDiv.innerHTML = "<p style='text-align:center;color:#555;padding:50px 0'>Пока никого нет</p>";
+    function renderList(arr){
+      onlineDiv.innerHTML="";
+      if (arr.length===0){
+        onlineDiv.innerHTML="<p style='text-align:center;color:#555;padding:50px 0'>Пока никого нет</p>";
         return;
       }
-
-      users.forEach(u => {
-        const el = document.createElement('div');
-        el.className = 'item';
-        const nameText = escapeHtml(u.name || u.nick || 'Аноним');
-        el.innerHTML = `<p>${nameText}</p><button class='private-btn'>ПРИВАТ</button>`;
-        // кнопка приват — пока заглушка
-        el.querySelector('button').addEventListener('click', () => alert('Приватный стрим с ' + nameText + ' скоро здесь'));
+      arr.forEach(u=>{
+        const el=document.createElement("div");
+        el.className="item";
+        const n = escapeHtml(u.name || "Аноним");
+        el.innerHTML = `<p>${n}</p><button class="private-btn">ПРИВАТ</button>`;
+        el.querySelector("button").onclick = () => alert("Приватный стрим с "+n+" скоро");
         onlineDiv.appendChild(el);
       });
     }
 
-    // Смена камеры (пробуем поменять facingMode)
-    async function switchCam() {
+    // === SWITCH CAMERA ===
+    async function switchCam(){
       if (!localStream) return;
+
       const videoTrack = localStream.getVideoTracks()[0];
-      const settings = videoTrack.getSettings ? videoTrack.getSettings() : {};
-      const currentFacing = settings.facingMode || 'user';
-      const newFacing = currentFacing === 'user' ? 'environment' : 'user';
-      try {
-        const newStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:newFacing}, audio:true});
-        // заменяем в UI
+      const current = videoTrack.getSettings().facingMode || "user";
+      const next = current==="user" ? "environment" : "user";
+
+      try{
+        const newStream = await navigator.mediaDevices.getUserMedia({
+          video:{facingMode:next},
+          audio:true
+        });
+
         localVideo.srcObject = newStream;
-        // останавливаем старые треки
-        localStream.getTracks().forEach(t => t.stop());
+        localStream.getTracks().forEach(t=>t.stop());
         localStream = newStream;
-      } catch (e) {
-        console.warn('Switch camera failed', e);
-        alert('Не удалось сменить камеру: ' + (e && e.message ? e.message : e));
+
+        await localVideo.play().catch(()=>{});
+      }catch(e){
+        alert("Не удалось сменить камеру: "+e.message);
       }
     }
 
-    // Безопасный escape для вставки имён в HTML
-    function escapeHtml(str){ return String(str).replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s])); }
+    function escapeHtml(str){
+      return str.replace(/[&<>"']/g, s =>
+        ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s])
+      );
+    }
 
-    // Отправка leave при закрытии страницы
-    window.addEventListener('beforeunload', () => {
-      try {
-        if (myRoomId) sendSafe({type:'leave', roomId: myRoomId, name});
-        sendSafe({type:'viewer_leave', name});
-        // Закрыть ws корректно
-        if (ws && ws.readyState === WebSocket.OPEN) ws.close();
-      } catch (e) { /* ignore */ }
-    });
-
-    // Если нужно — можно вызвать ручной reconnect по тапу (ключ: long press или тд.)
-
+    window.onbeforeunload = () => {
+      if (myRoomId) sendSafe({type:"leave", roomId: myRoomId, name});
+      sendSafe({type:"viewer_leave", name});
+      try{ ws.close(); }catch{}
+    }
   </script>
 </body>
 </html>
