@@ -14,21 +14,21 @@
     video{width:100vw;height:100vh;object-fit:cover}
     .list{padding:20px}
     .item{background:#111;margin:15px 0;padding:18px;border-radius:15px;display:flex;justify-content:space-between;align-items:center}
-    .item p{margin:0;color:#0f0;font-size:18px;font-weight:700}
-    .private-btn{background:#b026ff;color:#fff;padding:12px 25px;border-radius:12px;border:none;font-weight:700;cursor:pointer}
-    .timer{position:fixed;top:70px;left:0;right:0;text-align:center;color:#0f0;font-size:22px;background:rgba(0,0,0,0.7);padding:10px}
+    .item p{margin:0;color:#0f0;font-size:19px;font-weight:700}
+    .private-btn{background:#b026ff;color:#fff;padding:12px 28px;border-radius:12px;border:none;font-weight:700;cursor:pointer;font-size:16px}
+    .timer{position:fixed;top:70px;left:0;right:0;text-align:center;color:#0f0;font-size:24px;background:rgba(0,0,0,0.7);padding:10px}
   </style>
 </head>
 <body>
 
   <div id="main">
     <h1>SURROGAT</h1>
-    <button class="btn" id="watchBtn">Смотреть публичный стрим</button>
+    <button class="btn" id="watchBtn">Онлайн носители</button>
     <button class="btn" id="carrierBtn">Я носитель — начать стрим</button>
   </div>
 
   <div id="list" style="display:none">
-    <div class="back" onclick="back()">Назад</div>
+    <div class="back" onclick="location.reload()">Назад</div>
     <h1 style="margin:20px">Онлайн носители</h1>
     <div class="list" id="onlineList">Загрузка...</div>
   </div>
@@ -37,138 +37,134 @@
     const tg = Telegram.WebApp;
     tg.ready(); tg.expand();
 
-    const userName = tg.initDataUnsafe.user?.first_name || "Аноним";
-    const userId = tg.initDataUnsafe.user?.id || "guest_" + Math.random().toString(36).substr(2,6);
+    const userName = (tg.initDataUnsafe.user?.first_name || "Аноним") + (tg.initDataUnsafe.user?.last_name ? " " + tg.initDataUnsafe.user.last_name : "");
+    const userId = tg.initDataUnsafe.user?.id || "guest" + Math.random().toString(36).substr(2,6);
 
     let pc = null;
     let stream = null;
     let roomId = null;
-    let isHost = false;
 
     const ws = new WebSocket('wss://surrogat-signal.deno.dev');
 
-    ws.onopen = () => console.log("Сервер подключён");
+    ws.onopen = () => {
+      console.log("Подключено к серверу");
+      // При открытии сразу запрашиваем список
+      ws.send(JSON.stringify({type:"getOnline"}));
+    };
 
-    // Кнопки
     document.getElementById("watchBtn").onclick = () => {
       document.getElementById("main").style.display = "none";
       document.getElementById("list").style.display = "block";
-      loadOnline();
-      setInterval(loadOnline, 4000);
+      setInterval(() => ws.send(JSON.stringify({type:"getOnline"})), 3000);
     };
 
     document.getElementById("carrierBtn").onclick = () => {
-      isHost = true;
-      roomId = "surrogat_" + userId;
+      roomId = "live_" + userId;
       startCarrier();
     };
-
-    function back() { location.reload(); }
 
     async function startCarrier() {
       let facing = confirm("Фронтальная камера?") ? "user" : "environment";
       stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:facing}, audio:true});
 
       document.body.innerHTML = `
-        <div class="back" onclick="back()">Назад</div>
+        <div class="back" onclick="location.reload()">Назад</div>
         <video id="local" autoplay playsinline muted style="transform:scaleX(-1)"></video>
         <div class="switch" onclick="switchCam()">Сменить камеру</div>
         <div style="position:fixed;bottom:20px;left:0;right:0;background:rgba(0,120,0,0.9);padding:18px;color:#0f0;text-align:center;font-size:19px">
-          Ты в эфире как <b>${userName}</b><br>Принимаешь приватные суррогаты
+          Ты в эфире как <b>${userName}</b><br>Ожидаем суррогатов...
         </div>`;
 
       document.getElementById("local").srcObject = stream;
       startHost();
-      
-      // РЕГИСТРИРУЕМ СЕБЯ В СПИСКЕ ОНЛАЙН
+
+      // РЕГИСТРИРУЕМСЯ В ОНЛАЙН
       ws.send(JSON.stringify({type:"goOnline", roomId, nick: userName}));
     }
 
     window.switchCam = async () => {
       if (!stream) return;
-      const oldTrack = stream.getVideoTracks()[0];
-      const newFacing = oldTrack.getSettings().facingMode === 'user' ? 'environment' : 'user';
+      const old = stream.getVideoTracks()[0];
+      const newFacing = old.getSettings().facingMode === 'user' ? 'environment' : 'user';
       const newStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:newFacing}, audio:true});
-      const newTrack = newStream.getVideoTracks()[0];
       const sender = pc.getSenders().find(s => s.track?.kind === 'video');
-      if (sender) sender.replaceTrack(newTrack);
-      oldTrack.stop();
+      if (sender) sender.replaceTrack(newStream.getVideoTracks()[0]);
+      old.stop();
       stream = newStream;
       document.getElementById("local").srcObject = stream;
     };
 
     function startHost() {
-      pc = new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
+      pc = new RTCPeerConnection({iceServers:[{urls:"stun:stun.l.google.com:19302"}]});
       stream.getTracks().forEach(t => pc.addTrack(t, stream));
-      pc.onicecandidate = e => e.candidate && ws.send(JSON.stringify({type:"ice", candidate: e.candidate, roomId}));
-      pc.createOffer()
-        .then(offer => pc.setLocalDescription(offer))
-        .then(() => ws.send(JSON.stringify({type:"offer", offer: pc.localDescription, roomId})));
+      pc.onicecandidate = e => e.candidate && ws.send(JSON.stringify({type:"ice", candidate:e.candidate.toJSON(), roomId}));
+      pc.createOffer().then(o => pc.setLocalDescription(o)).then(() => {
+        ws.send(JSON.stringify({type:"offer", offer:pc.localDescription, roomId}));
+      });
     }
 
     function startPrivate(room) {
       roomId = room;
       document.body.innerHTML = `
-        <div class="back" onclick="back()">Назад</div>
+        <div class="back" onclick="location.reload()">Назад</div>
         <div class="timer" id="timer">10:00</div>
         <video id="remote" autoplay playsinline></video>
         <div style="position:fixed;bottom:30px;left:20px;right:20px;background:rgba(0,0,0,0.8);padding:20px;border-radius:20px;color:#0f0;text-align:center;font-size:18px">
-          Говори голосом — носитель выполнит команду
+          Говори голосом — я выполню!
         </div>`;
       
-      navigator.mediaDevices.getUserMedia({audio:true}); // голосовые команды
+      navigator.mediaDevices.getUserMedia({audio:true});
 
-      pc = new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
+      pc = new RTCPeerConnection({iceServers:[{urls:"stun:stun.l.google.com:19302"}]});
       pc.ontrack = e => document.getElementById("remote").srcObject = e.streams[0];
-      pc.onicecandidate = e => e.candidate && ws.send(JSON.stringify({type:"ice", candidate: e.candidate, roomId}));
+      pc.onicecandidate = e => e.candidate && ws.send(JSON.stringify({type:"ice", candidate:e.candidate.toJSON(), roomId}));
       ws.send(JSON.stringify({type:"requestOffer", roomId}));
 
-      // Таймер 10 минут (для теста)
       let sec = 600;
       const timer = setInterval(() => {
         sec--;
         const m = String(Math.floor(sec/60)).padStart(2,'0');
         const s = String(sec%60).padStart(2,'0');
         document.getElementById("timer").textContent = m+":"+s;
-        if (sec <= 0) { clearInterval(timer); alert("Время вышло"); back(); }
+        if (sec <= 0) { clearInterval(timer); alert("Время вышло"); location.reload(); }
       }, 1000);
     }
 
-    function loadOnline() {
-      ws.send(JSON.stringify({type:"getOnline"}));
-    }
-
-    ws.onmessage = async e => {
+    ws.onmessage = e => {
       const msg = JSON.parse(e.data);
 
-      // Обновление списка онлайн
       if (msg.type === "onlineList") {
         const list = document.getElementById("onlineList");
-        list.innerHTML = msg.list.length === 0 ? "<p style='text-align:center;color:#555'>Пока никто не стримит</p>" : "";
+        list.innerHTML = "";
+        if (msg.list.length === 0) {
+          list.innerHTML = "<p style='text-align:center;color:#555;margin-top:50px'>Пока никто не стримит</p>";
+          return;
+        }
         msg.list.forEach(h => {
           const div = document.createElement("div");
           div.className = "item";
-          div.innerHTML = `<p>${h.nick}</p><button class="private-btn" onclick="startPrivate('${h.roomId}')">Приватный суррогат</button>`;
+          div.innerHTML = `
+            <p>${h.nick}</p>
+            <button class="private-btn" onclick="startPrivate('${h.roomId}')">Приват 10 мин</button>
+          `;
           list.appendChild(div);
         });
       }
 
-      // WebRTC сигнализация
       if (!msg.roomId || msg.roomId !== roomId) return;
 
       if (msg.type === "offer") {
-        await pc.setRemoteDescription(msg.offer);
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        ws.send(JSON.stringify({type:"answer", answer, roomId}));
+        pc.setRemoteDescription(msg.offer).then(() => pc.createAnswer())
+          .then(a => pc.setLocalDescription(a))
+          .then(() => ws.send(JSON.stringify({type:"answer", answer:pc.localDescription, roomId})));
       }
-      if (msg.type === "answer") await pc.setRemoteDescription(msg.answer);
-      if (msg.type === "ice") await pc.addIceCandidate(msg.candidate);
+      if (msg.type === "answer") pc.setRemoteDescription(msg.answer);
+      if (msg.type === "ice") pc.addIceCandidate(msg.candidate);
     };
 
-    // При выходе — убираем себя из онлайна
     window.onbeforeunload = () => {
-      if (isHost) ws.send(JSON.stringify({type:"goOffline", roomId}));
+      if (roomId) ws.send(JSON.stringify({type:"goOffline", roomId}));
     };
   </script>
 </body>
+</html>
