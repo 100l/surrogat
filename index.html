@@ -6,89 +6,118 @@
   <title>SURROGAT</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <style>
-    body{margin:0;background:#000;color:#fff;font-family:sans-serif;text-align:center;padding:30px 20px}
-    h1{font-size:42px;margin:20px 0;background:linear-gradient(90deg,#00ff41,#b026ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-    p{font-size:19px;opacity:0.9;line-height:1.5}
-    .btn{background:linear-gradient(90deg,#00ff41,#b026ff);color:#000;font-weight:900;font-size:24px;padding:22px;border-radius:25px;border:none;width:95%;margin:20px auto;display:block;box-shadow:0 15px 40px rgba(0,255,65,0.5);cursor:pointer}
-    .small{color:#0f0;font-size:15px;margin-top:-10px}
-    video{width:100vw;height:100vh;object-fit:cover;background:#000}
+    body{margin:0;background:#000;color:#fff;font-family:sans-serif;overflow:hidden}
+    h1{font-size:42px;margin:30px 0 10px;background:linear-gradient(90deg,#00ff41,#b026ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;text-align:center}
+    .btn{background:linear-gradient(90deg,#00ff41,#b026ff);color:#000;font-weight:900;font-size:24px;padding:22px;border-radius:25px;border:none;width:90%;margin:20px auto;display:block;box-shadow:0 15px 40px rgba(0,255,65,0.5)}
+    .back{position:fixed;top:20px;left:20px;background:rgba(255,255,255,0.2);padding:15px 20px;border-radius:50px;z-index:999;font-size:30px;cursor:pointer}
+    .switch-cam{position:fixed;bottom:100px;left:50%;transform:translateX(-50%);background:rgba(255,255,255,0.3);padding:15px 40px;border-radius:50px;z-index:999;font-size:18px;cursor:pointer}
+    video{width:100vw;height:100vh;object-fit:cover}
+    .menu{position:fixed;top:0;left:0;right:0;bottom:0;background:#000;z-index:10;padding-top:100px;display:none}
+    .menu button{margin:15px auto}
   </style>
 </head>
 <body>
 
-  <h1>SURROGAT</h1>
-  <p>POV-стримы от первого лица</p>
+  <!-- Главный экран -->
+  <div id="main">
+    <h1>SURROGAT</h1>
+    <button class="btn" onclick="showFree()">Смотреть публичный стрим бесплатно</button>
+    <button class="btn" onclick="showPrivateMenu()">Приватный суррогат (голосовые команды)</button>
+    <button class="btn" onclick="startCarrier()">Я носитель — начать стрим</button>
+  </div>
 
-  <button class="btn" id="free">Смотреть публичный стрим бесплатно</button>
-  <button class="btn" id="private">Приватный суррогат (голосовые команды)</button>
-  <button class="btn" id="carrier">Я носитель — начать стрим</button>
-
-  <div id="menu" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:#000;z-index:10;padding:100px 20px">
+  <!-- Меню выбора времени -->
+  <div id="privateMenu" class="menu">
     <h2 style="color:#0f0">Выбери время:</h2>
-    <button class="btn" onclick="pay(10,1500)">10 минут — 1500 ⭐</button>
-    <button class="btn" onclick="pay(30,3000)">30 минут — 3000 ⭐</button>
-    <button class="btn" onclick="pay(60,5000)">60 минут — 5000 ⭐</button>
-    <p class="small">платформа берёт 5%</p>
+    <button class="btn" onclick="payAndWatch(10,1500)">10 минут — 1500 ⭐</button>
+    <button class="btn" onclick="payAndWatch(30,3000)">30 минут — 3000 ⭐</button>
+    <button class="btn" onclick="payAndWatch(60,5000)">60 минут — 5000 ⭐</button>
+    <p style="color:#0f0;font-size:14px">платформа берёт 5%</p>
+    <div class="back" onclick="back()">✕</div>
   </div>
 
   <script>
     const tg = Telegram.WebApp;
-    tg.ready();
-    tg.expand();
+    tg.ready(); tg.expand();
 
-    // ТЕСТОВЫЙ ПУБЛИЧНЫЙ СТРИМ (я сейчас в эфире)
-    document.getElementById('free').onclick = () => {
-      document.body.innerHTML = `<video src="https://surrogat-test.pages.dev/stream.mp4" autoplay playsinline loop></video>`;
-    };
+    function back() {
+      document.getElementById('main').style.display = 'block';
+      document.getElementById('privateMenu').style.display = 'none';
+      document.body.innerHTML = document.getElementById('main').outerHTML + document.getElementById('privateMenu').outerHTML;
+      location.reload(); // проще всего — перезагрузка
+    }
 
-    // ПРИВАТНЫЙ СУРРОГАТ
-    document.getElementById('private').onclick = () => {
-      document.getElementById('menu').style.display = 'block';
-    };
+    function showFree() {
+      document.body.innerHTML = `
+        <div class="back" onclick="back()">←</div>
+        <video src="https://surrogat-test.pages.dev/stream.mp4" autoplay playsinline loop controls></video>
+      `;
+    }
 
-    window.pay = (min, stars) => {
-      document.getElementById('menu').style.display = 'none';
+    function showPrivateMenu() {
+      document.getElementById('main').style.display = 'none';
+      document.getElementById('privateMenu').style.display = 'block';
+    }
+
+    function payAndWatch(min, stars) {
       tg.openInvoice({
         title: `Приватный суррогат — ${min} минут`,
-        description: 'Ты один + голосовые команды носителю. Комиссия 5%',
-        payload: 'private_' + min + 'min',
+        description: 'Эксклюзив + голосовые команды носителю',
+        payload: 'private_'+min,
         provider_token: '',
         currency: 'XTR',
-        prices: [{ label: `${min} минут`, amount: stars }]
+        prices: [{ label: `${min} мин`, amount: stars }]
       }, (success) => {
         if (success) {
-          // 5% комиссии платформе
-          console.log('Платформа получила:', stars * 0.05, '⭐');
-          // Открываем приватный стрим (я сейчас в приватном режиме)
           document.body.innerHTML = `
-            <video src="https://surrogat-test.pages.dev/private.mp4" autoplay playsinline loop></video>
-            <div style="position:fixed;bottom:30px;left:20px;right:20px;background:rgba(0,0,0,0.8);padding:20px;border-radius:20px">
-              <p style="margin:0;color:#0f0;font-size:18px">Говори голосом — я выполню!</p>
-            </div>`;
-          // Включаем микрофон для команд
+            <div class="back" onclick="back()">←</div>
+            <video src="https://surrogat-test.pages.dev/private.mp4" autoplay playsinline loop controls></video>
+            <div style="position:fixed;bottom:30px;left:20px;right:20px;background:rgba(0,0,0,0.8);padding:20px;border-radius:20px;color:#0f0;text-align:center">
+              Говори голосом — носитель выполнит!<br>Примеры: «повернись», «подойди», «покажи меню»
+            </div>
+          `;
           navigator.mediaDevices.getUserMedia({audio:true});
         }
       });
-    };
+    }
 
-    // НОСИТЕЛЬ
-    document.getElementById('carrier').onclick = async () => {
+    let currentStream = null;
+    async function startCarrier() {
       let facing = 'environment';
-      if(confirm('Фронтальная камера? (Отмена = основная)')) facing = 'user';
+      if (confirm('Фронтальная камера? (ОК = да, Отмена = основная)')) facing = 'user';
 
-      const stream = await navigator.mediaDevices.getUserMedia({
+      currentStream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: facing },
         audio: true
       });
 
       document.body.innerHTML = `
-        <video id="v" autoplay playsinline muted style="transform:scaleX(-1)"></video>
-        <div style="position:fixed;bottom:30px;left:20px;right:20px;background:rgba(255,0,0,0.7);padding:20px;border-radius:20px;color:#fff">
-          Ты в эфире! Ждём приватных суррогатов
-        </div>`;
+        <div class="back" onclick="back()">←</div>
+        <video id="video" autoplay playsinline muted></video>
+        <div class="switch-cam" onclick="switchCamera()">Сменить камеру</div>
+        <div style="position:fixed;bottom:30px;left:20px;right:20px;background:rgba(255,0,0,0.7);padding:20px;border-radius:20px;color:#fff;text-align:center">
+          Ты в эфире! Ждём суррогатов
+        </div>
+      `;
 
-      document.getElementById('v').srcObject = stream;
-      tg.showAlert('Ты в эфире! Ожидаем первых суррогатов');
+      document.getElementById('video').srcObject = currentStream;
+    }
+
+    window.switchCamera = async () => {
+      if (!currentStream) return;
+      const videoTrack = currentStream.getVideoTracks()[0];
+      const facing = videoTrack.getSettings().facingMode === 'user' ? 'environment' : 'user';
+      const newStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: facing },
+        audio: true
+      });
+      const newVideoTrack = newStream.getVideoTracks()[0];
+      const sender = RTCPeerConnection.prototype.getSenders ? 
+        RTCPeerConnection.prototype.getSenders().find(s => s.track.kind === 'video') : null;
+      if (sender) sender.replaceTrack(newVideoTrack);
+      videoTrack.stop();
+      currentStream = newStream;
+      document.getElementById('video').srcObject = newStream;
     };
   </script>
 </body>
