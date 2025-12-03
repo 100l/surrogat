@@ -8,9 +8,9 @@
   <style>
     body{margin:0;background:#000;color:#fff;font-family:sans-serif;overflow:hidden}
     h1{font-size:42px;margin:40px auto 20px;text-align:center;background:linear-gradient(90deg,#00ff41,#b026ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-    .btn{background:linear-gradient(90deg,#00ff41,#b026ff);color:#000;font-weight:900;font-size:24px;padding:20 voordeel;border-radius:25px;border:none;width:88%;margin:20px auto;display:block;box-shadow:0 15px 40px rgba(0,255,65,0.5)}
-    .back{position:fixed;top:15px;left:15px;background:rgba(255,255,255,0.2);padding:12px 18px;border-radius:50px;z-index:999;font-size:28px;cursor:pointer}
-    .switch{position:fixed;bottom:100px;left:50%;transform:translateX(-50%);background:rgba(255,255,255,0.3);padding:15px 35px;border-radius:50px;z-index:999;cursor:pointer}
+    .btn{background:linear-gradient(90deg,#00ff41,#b026ff);color:#000;font-weight:900;font-size:24px;padding:22px;border-radius:25px;border:none;width:88%;margin:20px auto;display:block;box-shadow:0 15px 40px rgba(0,255,65,0.5)}
+    .back{position:fixed;top:15px;left:15px;background:rgba(255,255,255,0.2);padding:12px 20px;border-radius:50px;z-index:999;font-size:28px;cursor:pointer}
+    .switch{position:fixed;bottom:100px;left:50%;transform:translateX(-50%);background:rgba(255,255,255,0.3);padding:15px 40px;border-radius:50px;z-index:999;cursor:pointer}
     video{width:100vw;height:100vh;object-fit:cover}
   </style>
 </head>
@@ -26,97 +26,92 @@
     const tg = Telegram.WebApp;
     tg.ready(); tg.expand();
 
-    let stream = null;
     let pc = null;
+    let stream = null;
+    const ws = new WebSocket('wss://surrogat-signal.deno.dev');
 
-    // КНОПКА НАЗАД
-    function back() {
-      location.reload();
-    }
+    function back() { location.reload(); }
 
-    // СМОТРЕТЬ (зритель)
-    function watch() {
-      document.body.innerHTML = `<div class="back" onclick="back()">←</div><video id="remote" autoplay playsinline></video>`;
-      startViewer();
-    }
-
-    // НОСИТЕЛЬ
+    // === НОСИТЕЛЬ ===
     async function startCarrier() {
-      let facing = confirm("Фронтальная камера?") ? "user" : "environment";
+      let facing = confirm("Фронтальная? (ОК=да, Отмена=основная)") ? "user" : "environment";
       stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:facing}, audio:true});
 
       document.body.innerHTML = `
-        <div class="back" onclick="back()">←</div>
+        <div class="back" onclick="back()">Назад</div>
         <video id="local" autoplay playsinline muted style="transform:scaleX(-1)"></video>
         <div class="switch" onclick="switchCam()">Сменить камеру</div>
-        <div style="position:fixed;bottom:20px;left:0;right:0;text-align:center;color:#0f0;font-size:20px;background:rgba(0,0,0,0.7);padding:15px">
-          Ты в эфире! Зрители видят тебя
+        <div style="position:fixed;bottom:20px;left:0;right:0;background:rgba(0,100,0,0.8);padding:15px;color:#0f0;text-align:center;font-size:20px">
+          Ты в эфире! Зрители тебя видят
         </div>`;
 
       document.getElementById("local").srcObject = stream;
-      startHost();
+
+      pc = new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
+      stream.getTracks().forEach(t => pc.addTrack(t, stream));
+
+      pc.onicecandidate = e => e.candidate && ws.send(JSON.stringify({candidate: e.candidate}));
+      
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      ws.send(JSON.stringify({offer}));
     }
 
     window.switchCam = async () => {
       if (!stream) return;
-      const videoTrack = stream.getVideoTracks()[0];
-      const newFacing = videoTrack.getSettings().facingMode === 'user' ? 'environment' : 'user';
+      const oldTrack = stream.getVideoTracks()[0];
+      const newFacing = oldTrack.getSettings().facingMode === 'user' ? 'environment' : 'user';
       const newStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:newFacing}, audio:true});
       const newTrack = newStream.getVideoTracks()[0];
 
       const sender = pc.getSenders().find(s => s.track.kind === 'video');
-      if (sender) sender.replaceTrack(newTrack);
+      sender.replaceTrack(newTrack);
 
-      videoTrack.stop();
-      stream.removeTrack(videoTrack);
+      oldTrack.stop();
+      stream.removeTrack(oldTrack);
       stream.addTrack(newTrack);
       document.getElementById("local").srcObject = stream;
     };
 
-    // === WebRTC P2P через Telegram Cloud (работает в Mini App) ===
-    const signaling = new BroadcastChannel('surrogat_channel');
+    // === ЗРИТЕЛЬ ===
+    function watch() {
+      document.body.innerHTML = `
+        <div class="back" onclick="back()">Назад</div>
+        <video id="remote" autoplay playsinline></video>
+        <div style="position:fixed;bottom:20px;left:0;right:0;background:rgba(0,0,100,0.8);padding:15px;color:#fff;text-align:center;font-size:18px">
+          Идёт подключение… обычно 2–5 сек
+        </div>`;
 
-    function startHost() {
       pc = new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
-      stream.getTracks().forEach(track => pc.addTrack(track, stream));
-
-      pc.onicecandidate = e => e.candidate && signaling.postMessage({candidate: e.candidate});
-      pc.createOffer().then(offer => {
-        pc.setLocalDescription(offer);
-        signaling.postMessage({sdp: offer});
-      });
-
-      signaling.onmessage = async e => {
-        if (e.data.sdp && e.data.sdp.type === 'answer') {
-          await pc.setRemoteDescription(e.data.sdp);
-        }
-        if (e.data.candidate) {
-          await pc.addIceCandidate(e.data.candidate);
-        }
-      };
-    }
-
-    function startViewer() {
-      pc = new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
-
+      
       pc.ontrack = e => {
         document.getElementById("remote").srcObject = e.streams[0];
+        document.querySelector('div').style.background = 'rgba(0,100,0,0.8)';
+        document.querySelector('div').textContent = 'Подключено! Наслаждайся POV';
       };
 
-      pc.onicecandidate = e => e.candidate && signaling.postMessage({candidate: e.candidate});
-
-      signaling.onmessage = async e => {
-        if (e.data.sdp && e.data.sdp.type === 'offer') {
-          await pc.setRemoteDescription(e.data.sdp);
-          const answer = await pc.createAnswer();
-          await pc.setLocalDescription(answer);
-          signaling.postMessage({sdp: answer});
-        }
-        if (e.data.candidate) {
-          await pc.addIceCandidate(e.data.candidate);
-        }
-      };
+      pc.onicecandidate = e => e.candidate && ws.send(JSON.stringify({candidate: e.candidate}));
     }
+
+    // === СИГНАЛИЗАЦИЯ ===
+    ws.onmessage = async (msg) => {
+      const data = JSON.parse(msg.data);
+
+      if (data.offer) {
+        await pc.setRemoteDescription(data.offer);
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        ws.send(JSON.stringify({answer}));
+      }
+
+      if (data.answer) {
+        await pc.setRemoteDescription(data.answer);
+      }
+
+      if (data.candidate) {
+        await pc.addIceCandidate(data.candidate);
+      }
+    };
   </script>
 </body>
 </html>
